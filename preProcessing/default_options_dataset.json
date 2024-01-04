@@ -1,0 +1,7 @@
+{
+    "device": "cuda",
+    "path_dataset": "data/datasets/dataset_MI/",
+    "amass_directory": "/home/kxue/Work/MotionGen/HumanML3D/",
+    "nb_freqs": 512,
+    "framerate": 25
+  }

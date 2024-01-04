@@ -1,2 +1,4 @@
 **/test_*
 **/*.pkl
+*__init__*
+data
