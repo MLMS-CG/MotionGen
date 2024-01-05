@@ -2,6 +2,8 @@
     "device": "cuda",
     "path_dataset": "data/datasets/dataset_MI/",
     "amass_directory": "/home/kxue/Work/MotionGen/HumanML3D/",
+    "babel_directory": "/home/kxue/Work/MotionGen/HumanML3D/babel_v1.0_release/",
+    "action_categories": ["walk"], 
     "nb_freqs": 512,
-    "framerate": 25
+    "framerate": 30
   }
