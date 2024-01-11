@@ -2,4 +2,5 @@
 **/*.pkl
 *__init__*
 __pycache__/
-data
+/data
+/save
