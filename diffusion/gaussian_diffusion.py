@@ -136,6 +136,7 @@ class GaussianDiffusion:
         model_mean_type,
         model_var_type,
         loss_type,
+        lambda_mm=1,
         rescale_timesteps=False,
         means_stds = None
     ):
@@ -144,6 +145,8 @@ class GaussianDiffusion:
         self.loss_type = loss_type
         self.rescale_timesteps = rescale_timesteps
         self.means_stds = means_stds
+
+        self.lambda_mm = lambda_mm
 
         # Use float64 for accuracy.
         betas = np.array(betas, dtype=np.float64)
@@ -1225,7 +1228,7 @@ class GaussianDiffusion:
         :return: a dict with the key "loss" containing a tensor of shape [N].
                  Some mean or variance settings may also have other keys.
         """
-        
+
 
         if model_kwargs is None:
             model_kwargs = {}
@@ -1281,10 +1284,15 @@ class GaussianDiffusion:
         mesh_output = torch.matmul(evecs, reversed_model_output)
         mesh_start = torch.matmul(evecs, reversed_x_start)
 
+
+
         terms["mse"] = (self.l2_loss(target, model_output)*self.means_stds[1]).mean((1,2,3)) # mean_flat(rot_mse)
         terms["mesh_mse"] = self.l2_loss(mesh_output, mesh_start).mean((1,2,3))
         
-        terms["loss"] = terms["mse"] + terms.get('vb', 0.) + 10*terms["mesh_mse"]
+        lambda_mesh_loss = _extract_into_tensor(self.alphas_cumprod, t, terms["mesh_mse"].shape)
+
+        terms["loss"] = terms["mse"] + terms.get('vb', 0.)\
+              + lambda_mesh_loss * self.lambda_mm*terms["mesh_mse"]
 
         return terms
 

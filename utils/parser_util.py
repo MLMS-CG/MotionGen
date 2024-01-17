@@ -66,12 +66,13 @@ def add_base_options(parser):
 def add_diffusion_options(parser):
     group = parser.add_argument_group('diffusion')
     group.add_argument("--learn_sigma", default=False, type=bool)
-    group.add_argument("--target", default="x0", choices=['epsilon', 'x0'], type=str)
+    group.add_argument("--target", default="epsilon", choices=['epsilon', 'x0'], type=str)
     group.add_argument("--noise_schedule", default='cosine', choices=['linear', 'cosine'], type=str,
                        help="Noise schedule type")
     group.add_argument("--diffusion_steps", default=2000, type=int,
                        help="Number of diffusion steps (denoted T in the paper)")
     group.add_argument("--sigma_small", default=True, type=bool, help="Use smaller sigma values.")
+    group.add_argument("--lambda_mesh_mse", default=1, type=float)
 
 
 def add_model_options(parser):
@@ -110,7 +111,7 @@ def add_data_options(parser):
 
 def add_training_options(parser):
     group = parser.add_argument_group('training')
-    group.add_argument("--save_dir", default="save/unconditioned_concat_x0", type=str,
+    group.add_argument("--save_dir", default="save/test", type=str,
                        help="Path to save checkpoints and results.")
     group.add_argument("--overwrite", action='store_true',
                        help="If True, will enable to use an already existing save_dir.")

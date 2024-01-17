@@ -28,7 +28,6 @@ class Baseline(nn.Module):
         self.embed_timestep = TimestepEmbedder(self.latent_dim, self.positional_encoding)
 
         self.module_static = LearnedPooling()
-        # self.test = LearnedPooling()
 
         # Transformer to extract temporal information
         encoder_layer = nn.TransformerEncoderLayer(
@@ -45,8 +44,8 @@ class Baseline(nn.Module):
         self.encoder_first_linear = nn.Linear(self.latent_dim, self.latent_dim)
         self.encoder_end_linear = nn.Linear(self.latent_dim, self.latent_dim)
 
-        encoder_features = [3,32,64]
-        sizes_downsample = [1024,64,32]
+        # encoder_features = [3,32,64]
+        # sizes_downsample = [1024,64,32]
         # self.encoder = Encoder(encoder_features, sizes_downsample, self.latent_dim, nn.ELU)
         # self.decoder = Decoder(encoder_features, sizes_downsample, self.latent_dim, nn.ELU)
 
