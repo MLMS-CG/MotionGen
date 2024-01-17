@@ -28,7 +28,7 @@ class TrainLoop:
         self.train_platform = train_platform
         self.model = model
         self.diffusion = diffusion
-        self.train_data, self.val_data, self.test_data = data
+        self.train_data, self.val_data = data
         self.batch_size = args.batch_size
         self.lr = args.lr
         self.log_interval = args.log_interval
@@ -137,6 +137,7 @@ class TrainLoop:
             self.save()
             self.evaluate()
 
+    @torch.no_grad()
     def evaluate(self):
         # if not self.args.eval_during_training:
         #     return

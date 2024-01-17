@@ -8,13 +8,26 @@ Docstrings have been added, as well as DDIM sampling and a new collection of bet
 
 import enum
 import math
-
+import mmap
+import json
 import numpy as np
 import torch
 import torch as th
 from copy import deepcopy
 from diffusion.nn import mean_flat, sum_flat
 from diffusion.losses import normal_kl, discretized_gaussian_log_likelihood
+
+with open("preProcessing/default_options_dataset.json", "r") as outfile:
+    opt = json.load(outfile)
+
+# evecs
+print("loading evecs")
+with open("data/evecs_4096.bin", "r+b") as f:
+    mm = mmap.mmap(f.fileno(), 0)
+    evecs = torch.tensor(np.frombuffer(
+        mm[:], dtype=np.float32)).view(6890, 4096).to(opt["device"])
+    
+evecs = evecs[:, :opt["nb_freqs"]]
 
 def get_named_beta_schedule(schedule_name, num_diffusion_timesteps, scale_betas=1.):
     """
@@ -124,37 +137,13 @@ class GaussianDiffusion:
         model_var_type,
         loss_type,
         rescale_timesteps=False,
-        lambda_rcxyz=0.,
-        lambda_vel=0.,
-        lambda_pose=1.,
-        lambda_orient=1.,
-        lambda_loc=1.,
-        data_rep='rot6d',
-        lambda_root_vel=0.,
-        lambda_vel_rcxyz=0.,
-        lambda_fc=0.,
+        means_stds = None
     ):
         self.model_mean_type = model_mean_type
         self.model_var_type = model_var_type
         self.loss_type = loss_type
         self.rescale_timesteps = rescale_timesteps
-        self.data_rep = data_rep
-
-        if data_rep != 'rot_vel' and lambda_pose != 1.:
-            raise ValueError('lambda_pose is relevant only when training on velocities!')
-        self.lambda_pose = lambda_pose
-        self.lambda_orient = lambda_orient
-        self.lambda_loc = lambda_loc
-
-        self.lambda_rcxyz = lambda_rcxyz
-        self.lambda_vel = lambda_vel
-        self.lambda_root_vel = lambda_root_vel
-        self.lambda_vel_rcxyz = lambda_vel_rcxyz
-        self.lambda_fc = lambda_fc
-
-        if self.lambda_rcxyz > 0. or self.lambda_vel > 0. or self.lambda_root_vel > 0. or \
-                self.lambda_vel_rcxyz > 0. or self.lambda_fc > 0.:
-            assert self.loss_type == LossType.MSE, 'Geometric losses are supported by MSE loss type only!'
+        self.means_stds = means_stds
 
         # Use float64 for accuracy.
         betas = np.array(betas, dtype=np.float64)
@@ -303,14 +292,14 @@ class GaussianDiffusion:
         assert t.shape == (B,)
         model_output = model(x, self._scale_timesteps(t), **model_kwargs)
 
-        if 'inpainting_mask' in model_kwargs['y'].keys() and 'inpainted_motion' in model_kwargs['y'].keys():
-            inpainting_mask, inpainted_motion = model_kwargs['y']['inpainting_mask'], model_kwargs['y']['inpainted_motion']
-            assert self.model_mean_type == ModelMeanType.START_X, 'This feature supports only X_start pred for mow!'
-            assert model_output.shape == inpainting_mask.shape == inpainted_motion.shape
-            model_output = (model_output * ~inpainting_mask) + (inpainted_motion * inpainting_mask)
-            # print('model_output', model_output.shape, model_output)
-            # print('inpainting_mask', inpainting_mask.shape, inpainting_mask[0,0,0,:])
-            # print('inpainted_motion', inpainted_motion.shape, inpainted_motion)
+        # if 'inpainting_mask' in model_kwargs['y'].keys() and 'inpainted_motion' in model_kwargs['y'].keys():
+        #     inpainting_mask, inpainted_motion = model_kwargs['y']['inpainting_mask'], model_kwargs['y']['inpainted_motion']
+        #     assert self.model_mean_type == ModelMeanType.START_X, 'This feature supports only X_start pred for mow!'
+        #     assert model_output.shape == inpainting_mask.shape == inpainted_motion.shape
+        #     model_output = (model_output * ~inpainting_mask) + (inpainted_motion * inpainting_mask)
+        #     # print('model_output', model_output.shape, model_output)
+        #     # print('inpainting_mask', inpainting_mask.shape, inpainting_mask[0,0,0,:])
+        #     # print('inpainted_motion', inpainted_motion.shape, inpainted_motion)
 
         if self.model_var_type in [ModelVarType.LEARNED, ModelVarType.LEARNED_RANGE]:
             assert model_output.shape == (B, C * 2, *x.shape[2:])
@@ -1236,9 +1225,7 @@ class GaussianDiffusion:
         :return: a dict with the key "loss" containing a tensor of shape [N].
                  Some mean or variance settings may also have other keys.
         """
-
-        # enc = model.model._modules['module']
-        enc = model.model
+        
 
         if model_kwargs is None:
             model_kwargs = {}
@@ -1281,75 +1268,27 @@ class GaussianDiffusion:
         }[self.model_mean_type]
         assert model_output.shape == target.shape == x_start.shape  # [bs, njoints, nfeats, nframes]
 
-        terms["mse"] = self.l2_loss(target, model_output).mean((1,2,3)) # mean_flat(rot_mse)
+        reversed_x_start = x_start*self.means_stds[1]+self.means_stds[0]
+        
+        predicted_x_start = {
+            ModelMeanType.PREVIOUS_X: None,
+            ModelMeanType.START_X: model_output,
+            ModelMeanType.EPSILON: self._predict_xstart_from_eps(x_t, t, model_output),
+        }[self.model_mean_type]
 
-        terms["loss"] = terms["mse"] + terms.get('vb', 0.)
+        reversed_model_output = predicted_x_start*self.means_stds[1]+self.means_stds[0]
+        # Use to calculate loss based on mesh
+        mesh_output = torch.matmul(evecs, reversed_model_output)
+        mesh_start = torch.matmul(evecs, reversed_x_start)
+
+        terms["mse"] = (self.l2_loss(target, model_output)*self.means_stds[1]).mean((1,2,3)) # mean_flat(rot_mse)
+        terms["mesh_mse"] = self.l2_loss(mesh_output, mesh_start).mean((1,2,3))
+        
+        terms["loss"] = terms["mse"] + terms.get('vb', 0.) + 10*terms["mesh_mse"]
 
         return terms
 
-    def fc_loss_rot_repr(self, gt_xyz, pred_xyz, mask):
-        def to_np_cpu(x):
-            return x.detach().cpu().numpy()
-        """
-        pose_xyz: SMPL batch tensor of shape: [BatchSize, 24, 3, Frames]
-        """
-        # 'L_Ankle',  # 7, 'R_Ankle',  # 8 , 'L_Foot',  # 10, 'R_Foot',  # 11
 
-        l_ankle_idx, r_ankle_idx = 7, 8
-        l_foot_idx, r_foot_idx = 10, 11
-        """ Contact calculated by 'Kfir Method' Commented code)"""
-        # contact_signal = torch.zeros((pose_xyz.shape[0], pose_xyz.shape[3], 2), device=pose_xyz.device) # [BatchSize, Frames, 2]
-        # left_xyz = 0.5 * (pose_xyz[:, l_ankle_idx, :, :] + pose_xyz[:, l_foot_idx, :, :]) # [BatchSize, 3, Frames]
-        # right_xyz = 0.5 * (pose_xyz[:, r_ankle_idx, :, :] + pose_xyz[:, r_foot_idx, :, :])
-        # left_z, right_z = left_xyz[:, 2, :], right_xyz[:, 2, :] # [BatchSize, Frames]
-        # left_velocity = torch.linalg.norm(left_xyz[:, :, 2:] - left_xyz[:, :, :-2], axis=1)  # [BatchSize, Frames]
-        # right_velocity = torch.linalg.norm(left_xyz[:, :, 2:] - left_xyz[:, :, :-2], axis=1)
-        #
-        # left_z_mask = left_z <= torch.mean(torch.sort(left_z)[0][:, :left_z.shape[1] // 5], axis=-1)
-        # left_z_mask = torch.stack([left_z_mask, left_z_mask], dim=-1) # [BatchSize, Frames, 2]
-        # left_z_mask[:, :, 1] = False  # Blank right side
-        # contact_signal[left_z_mask] = 0.4
-        #
-        # right_z_mask = right_z <= torch.mean(torch.sort(right_z)[0][:, :right_z.shape[1] // 5], axis=-1)
-        # right_z_mask = torch.stack([right_z_mask, right_z_mask], dim=-1) # [BatchSize, Frames, 2]
-        # right_z_mask[:, :, 0] = False  # Blank left side
-        # contact_signal[right_z_mask] = 0.4
-        # contact_signal[left_z <= (torch.mean(torch.sort(left_z)[:left_z.shape[0] // 5]) + 20), 0] = 1
-        # contact_signal[right_z <= (torch.mean(torch.sort(right_z)[:right_z.shape[0] // 5]) + 20), 1] = 1
-
-        # plt.plot(to_np_cpu(left_z[0]), label='left_z')
-        # plt.plot(to_np_cpu(left_velocity[0]), label='left_velocity')
-        # plt.plot(to_np_cpu(contact_signal[0, :, 0]), label='left_fc')
-        # plt.grid()
-        # plt.legend()
-        # plt.show()
-        # plt.plot(to_np_cpu(right_z[0]), label='right_z')
-        # plt.plot(to_np_cpu(right_velocity[0]), label='right_velocity')
-        # plt.plot(to_np_cpu(contact_signal[0, :, 1]), label='right_fc')
-        # plt.grid()
-        # plt.legend()
-        # plt.show()
-
-        gt_joint_xyz = gt_xyz[:, [l_ankle_idx, l_foot_idx, r_ankle_idx, r_foot_idx], :, :]  # [BatchSize, 4, 3, Frames]
-        gt_joint_vel = torch.linalg.norm(gt_joint_xyz[:, :, :, 1:] - gt_joint_xyz[:, :, :, :-1], axis=2)  # [BatchSize, 4, Frames]
-        fc_mask = (gt_joint_vel <= 0.01)
-        pred_joint_xyz = pred_xyz[:, [l_ankle_idx, l_foot_idx, r_ankle_idx, r_foot_idx], :, :]  # [BatchSize, 4, 3, Frames]
-        pred_joint_vel = torch.linalg.norm(pred_joint_xyz[:, :, :, 1:] - pred_joint_xyz[:, :, :, :-1], axis=2)  # [BatchSize, 4, Frames]
-        pred_joint_vel[~fc_mask] = 0  # Blank non-contact velocities frames. [BS,4,FRAMES]
-        pred_joint_vel = torch.unsqueeze(pred_joint_vel, dim=2)
-
-        """DEBUG CODE"""
-        # print(f'mask: {mask.shape}')
-        # print(f'pred_joint_vel: {pred_joint_vel.shape}')
-        # plt.title(f'Joint: {joint_idx}')
-        # plt.plot(to_np_cpu(gt_joint_vel[0]), label='velocity')
-        # plt.plot(to_np_cpu(fc_mask[0]), label='fc')
-        # plt.grid()
-        # plt.legend()
-        # plt.show()
-        return self.masked_l2(pred_joint_vel, torch.zeros(pred_joint_vel.shape, device=pred_joint_vel.device),
-                              mask[:, :, :, 1:])
- 
 
     def _prior_bpd(self, x_start):
         """

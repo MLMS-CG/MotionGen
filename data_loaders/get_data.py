@@ -5,14 +5,14 @@ def get_dataset_class():
     return Spactral
 
 
-def get_dataset(mode, path, nb_freqs, offset, size_window):
+def get_dataset(mode, path, nb_freqs, offset, size_window, means_stds):
     DATA = get_dataset_class()
-    dataset = DATA(mode, path, nb_freqs, offset, size_window)
+    dataset = DATA(mode, path, nb_freqs, offset, size_window, means_stds)
     return dataset
 
 
-def get_dataset_loader(mode, path, batch_size, nb_freqs, offset, size_window):
-    dataset = get_dataset(mode, path, nb_freqs, offset, size_window)
+def get_dataset_loader(mode, path, batch_size, nb_freqs, offset, size_window, means_stds=None):
+    dataset = get_dataset(mode, path, nb_freqs, offset, size_window, means_stds)
 
     loader = DataLoader(
         dataset, batch_size=batch_size, shuffle=True,

@@ -2,20 +2,16 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from model.encdec import LearnedPooling
+from model.encdec import Encoder, Decoder, LearnedPooling
 
 
 class Baseline(nn.Module):
-    def __init__(self, nb_freqs, nfeats, 
+    def __init__(self, size_window, t_emb, learn_sigma, 
                  latent_dim=256, ff_size=1024, num_layers=8, num_heads=4, dropout=0.1,
-                 activation="gelu", dataset='amass', 
-                 means_stds = None, **kargs):
+                 activation="gelu", **kargs):
         super().__init__()
 
-
-        self.nb_freqs = nb_freqs
-        self.nfeats = nfeats
-        self.dataset = dataset
+        self.size_window = size_window
 
         self.latent_dim = latent_dim
 
@@ -23,13 +19,18 @@ class Baseline(nn.Module):
         self.num_layers = num_layers
         self.num_heads = num_heads
 
-        self.input_feats = self.nb_freqs * self.nfeats
+        if t_emb == "concat":
+            self.t_emb = lambda a, b: torch.concat([a, b], dim=1)
+        if t_emb =="add":
+            self.t_emb = lambda a, b: a+b
 
         self.positional_encoding = PositionalEncoding(self.latent_dim)
         self.embed_timestep = TimestepEmbedder(self.latent_dim, self.positional_encoding)
 
-        self.module_static = LearnedPooling(means_stds)
+        self.module_static = LearnedPooling()
+        # self.test = LearnedPooling()
 
+        # Transformer to extract temporal information
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=self.latent_dim,
             nhead=self.num_heads,
@@ -38,14 +39,16 @@ class Baseline(nn.Module):
             activation=activation
         )
 
-
-
         self.transformer_encoder = nn.TransformerEncoder(
             encoder_layer=encoder_layer, num_layers=num_layers
         )
         self.encoder_first_linear = nn.Linear(self.latent_dim, self.latent_dim)
         self.encoder_end_linear = nn.Linear(self.latent_dim, self.latent_dim)
 
+        encoder_features = [3,32,64]
+        sizes_downsample = [1024,64,32]
+        # self.encoder = Encoder(encoder_features, sizes_downsample, self.latent_dim, nn.ELU)
+        # self.decoder = Decoder(encoder_features, sizes_downsample, self.latent_dim, nn.ELU)
 
     def forward(self, x, timesteps, y=None):
         """
@@ -54,10 +57,18 @@ class Baseline(nn.Module):
         """
         emb = self.embed_timestep(timesteps)  # [1, bs, d]
         output_static = self.enc_static(x)
+        
+        # timesteps embedding
+        output_static = self.t_emb(emb, output_static) 
 
-        output_transformer = self.enc_transformer(output_static + emb)
+        output_transformer = self.enc_transformer(output_static)[:,-self.size_window:,:]
 
         output = self.dec_static(output_transformer)
+        
+        # if self.learn_sigma:
+        #     output_var = self.dec_static(output_transformer, self.vardec)
+        #     return torch.concat([output, output_var], dim=1)
+
         return output
     
     def parameters(self):

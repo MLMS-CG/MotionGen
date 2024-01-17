@@ -4,13 +4,13 @@ import mmap
 import types
 
 class Spactral(data.Dataset):
-    def __init__(self, mode, datapath, nb_freqs, offset, size_window):
+    def __init__(self, mode, datapath, nb_freqs, offset, size_window, std_mean=None):
         # load dataset
         ## load length data
         with open(datapath + "lengths.bin", "r+b") as f:
             mm = mmap.mmap(f.fileno(), 0)
             self.lengths = np.frombuffer(mm, dtype=int)
-        self.means_stds = None
+        self.means_stds = std_mean
         self.sum_lengths = np.array(
             [np.sum(self.lengths[:i]) for i in range(len(self.lengths))]
         )
@@ -54,7 +54,7 @@ class Spactral(data.Dataset):
 
     def calStdMean(self,data):
         data = np.array(data.reshape(-1, self.nb_freqs, 3))
-        self.means_stds = [data.mean((0,1)), data.std((0,1))]
+        self.means_stds = [data.mean(0), data.std(0)]
 
     def __getitem__(self, idx):
         # get coefs for training
@@ -62,7 +62,8 @@ class Spactral(data.Dataset):
             self.chunkIndexStartFrame[idx][1]:\
             self.chunkIndexStartFrame[idx][1] + self.crop_len 
         ]).reshape(self.size_window, self.nb_freqs, 3)
-        return selected
+
+        return (selected-self.means_stds[0])/self.means_stds[1]
 
     def __len__(self):
         # return len

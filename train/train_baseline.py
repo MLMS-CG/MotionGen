@@ -32,23 +32,16 @@ def main():
     dist_util.setup_dist(args.device)
 
     print("creating data loader...")
-    data = [
-        get_dataset_loader(
-            mode,
-            args.data_dir,
-            args.batch_size,
-            args.nb_freqs,
-            args.offset,
-            args.size_window
-        )\
-        for mode in ["train", "val"]
-    ]
 
-    means_stds = [torch.tensor(ele) for ele in data[0][1]]
-    data = [ele[0] for ele in data]
+    train_data, means_stds = get_dataset_loader(
+        "train", args.data_dir, args.batch_size, args.nb_freqs, args.offset, args.size_window
+    )
+    val_data, _ = get_dataset_loader(
+        "val",  args.data_dir, args.batch_size, args.nb_freqs, args.offset, args.size_window, means_stds
+    )
 
     if args.cuda:
-        means_stds = [ele.to("cuda") for ele in means_stds]
+        means_stds = [torch.tensor(ele).to("cuda") for ele in means_stds]
 
     print("creating model and diffusion...")
     model, diffusion = create_unconditioned_model_and_diffusion(args, means_stds)
@@ -57,7 +50,7 @@ def main():
 
     print('Total params: %.2fM' % (sum(p.numel() for p in model.parameters()) / 1000000.0))
     print("Training...")
-    TrainLoop(args, train_platform, model, diffusion, data).run_loop()
+    TrainLoop(args, train_platform, model, diffusion, [train_data, val_data]).run_loop()
     train_platform.close()
 
 if __name__ == "__main__":

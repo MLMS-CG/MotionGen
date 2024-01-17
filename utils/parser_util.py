@@ -60,20 +60,24 @@ def add_base_options(parser):
     group.add_argument("--cuda", default=True, type=bool, help="Use cuda device, otherwise use CPU.")
     group.add_argument("--device", default=0, type=int, help="Device id to use.")
     group.add_argument("--seed", default=10, type=int, help="For fixing random seed.")
-    group.add_argument("--batch_size", default=64, type=int, help="Batch size during training.")
+    group.add_argument("--batch_size", default=48, type=int, help="Batch size during training.")
 
 
 def add_diffusion_options(parser):
     group = parser.add_argument_group('diffusion')
+    group.add_argument("--learn_sigma", default=False, type=bool)
+    group.add_argument("--target", default="x0", choices=['epsilon', 'x0'], type=str)
     group.add_argument("--noise_schedule", default='cosine', choices=['linear', 'cosine'], type=str,
                        help="Noise schedule type")
-    group.add_argument("--diffusion_steps", default=1000, type=int,
+    group.add_argument("--diffusion_steps", default=2000, type=int,
                        help="Number of diffusion steps (denoted T in the paper)")
     group.add_argument("--sigma_small", default=True, type=bool, help="Use smaller sigma values.")
 
 
 def add_model_options(parser):
     group = parser.add_argument_group('model')
+    group.add_argument("--t_emb", default='concat', 
+                       choices=['add', 'concat'] ,type=str)
     group.add_argument("--arch", default='trans_enc',
                        choices=['trans_enc', 'trans_dec', 'gru'], type=str,
                        help="Architecture types as reported in the paper.")
@@ -87,9 +91,6 @@ def add_model_options(parser):
     group.add_argument("--cond_mask_prob", default=.1, type=float,
                        help="The probability of masking the condition during training."
                             " For classifier-free guidance learning.")
-    group.add_argument("--lambda_rcxyz", default=0.0, type=float, help="Joint positions loss.")
-    group.add_argument("--lambda_vel", default=0.0, type=float, help="Joint velocity loss.")
-    group.add_argument("--lambda_fc", default=0.0, type=float, help="Foot contact loss.")
     group.add_argument("--unconstrained", action='store_true',
                        help="Model is trained unconditionally. That is, it is constrained by neither text nor action. "
                             "Currently tested on HumanAct12 only.")
@@ -109,7 +110,7 @@ def add_data_options(parser):
 
 def add_training_options(parser):
     group = parser.add_argument_group('training')
-    group.add_argument("--save_dir", default="save/unconditioned", type=str,
+    group.add_argument("--save_dir", default="save/unconditioned_concat_x0", type=str,
                        help="Path to save checkpoints and results.")
     group.add_argument("--overwrite", action='store_true',
                        help="If True, will enable to use an already existing save_dir.")
@@ -131,9 +132,9 @@ def add_training_options(parser):
                        help="If -1, will use all samples in the specified split.")
     group.add_argument("--log_interval", default=1_000, type=int,
                        help="Log losses each N steps")
-    group.add_argument("--save_interval", default=5_000, type=int,
+    group.add_argument("--save_interval", default=1_000, type=int,
                        help="Save checkpoints and run evaluation each N steps")
-    group.add_argument("--num_steps", default=10_000, type=int,
+    group.add_argument("--num_steps", default=30_000, type=int,
                        help="Training will stop after the specified number of steps.")
     group.add_argument("--num_frames", default=60, type=int,
                        help="Limit for the maximal number of frames. In HumanML3D and KIT this field is ignored.")

@@ -8,22 +8,18 @@ def load_model_wo_clip(model, state_dict):
     assert all([k.startswith('clip_model.') for k in missing_keys])
 
 def create_unconditioned_model_and_diffusion(args, means_stds):
-    model = Baseline(**get_model_args(args), means_stds=means_stds)
-    diffusion = create_gaussian_diffusion(args)
+    model = Baseline(**get_model_args(args))
+    diffusion = create_gaussian_diffusion(args, means_stds)
     return model, diffusion
 
 def get_model_args(args,):
-    return {'modeltype': '', 'nb_freqs': args.nb_freqs, 'nfeats': args.size_window, 
-            'translation': True, 'glob': True, 'glob_rot': True,
-            'latent_dim': args.latent_dim, 'ff_size': 1024, 'num_layers': args.layers, 'num_heads': 4,
-            'dropout': 0.1, 'activation': "gelu", 
-            'cond_mask_prob': args.cond_mask_prob,
-            'emb_trans_dec': args.emb_trans_dec}
+    return {'size_window': args.size_window, 't_emb': args.t_emb, 'learn_sigma': args.learn_sigma, 
+            'latent_dim': args.latent_dim, 'ff_size': 1024, 'num_layers': args.layers, 'num_heads': 4,            'dropout': 0.1, 'activation': "gelu", }
 
 
-def create_gaussian_diffusion(args):
+def create_gaussian_diffusion(args, means_stds):
     # default params
-    predict_xstart = True  # we always predict x_start (a.k.a. x0), that's our deal!
+    target = args.target  # we always predict x_start (a.k.a. x0), that's our deal!
     steps = args.diffusion_steps
     scale_beta = 1.  # no scaling
     timestep_respacing = ''  # can be used for ddim sampling, we don't use it.
@@ -40,7 +36,7 @@ def create_gaussian_diffusion(args):
         use_timesteps=space_timesteps(steps, timestep_respacing),
         betas=betas,
         model_mean_type=(
-            gd.ModelMeanType.EPSILON if not predict_xstart else gd.ModelMeanType.START_X
+            gd.ModelMeanType.EPSILON if target=="epsilon" else gd.ModelMeanType.START_X
         ),
         model_var_type=(
             (
@@ -53,7 +49,5 @@ def create_gaussian_diffusion(args):
         ),
         loss_type=loss_type,
         rescale_timesteps=rescale_timesteps,
-        lambda_vel=args.lambda_vel,
-        lambda_rcxyz=args.lambda_rcxyz,
-        lambda_fc=args.lambda_fc,
+        means_stds = means_stds
     )

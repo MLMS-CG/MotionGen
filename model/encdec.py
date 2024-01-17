@@ -11,54 +11,23 @@ class MatMulLayer(torch.nn.Module):
     def forward(self, x):
         return torch.matmul(x, self.mat)
 
-
-class LearnedPooling(torch.nn.Module):
-    def __init__(self, means_stds):
+class Encoder(torch.nn.Module):
+    def __init__(
+            self,
+            encoder_features,
+            sizes_downsample,
+            latent_space,
+            activation
+        ):
         super().__init__()
 
-        encoder_features = [3,32,64]
-
-        sizes_downsample = [1024,64,32]
-        sizes_upsample = sizes_downsample[::-1]
-
-        sizes_convs_encode = [3
-                              for _ in range(len(encoder_features))]
-        sizes_convs_decode = sizes_convs_encode[::-1]
-
-        self.latent_space = 256
+        sizes_convs_encode = [3 for _ in range(len(encoder_features))]
 
         encoder_linear = [
             encoder_features[-1] * sizes_downsample[-1],
-            self.latent_space,
+            latent_space,
         ]
 
-        decoder_linear = [
-            self.latent_space,
-            encoder_features[-1] * sizes_downsample[-1],
-        ]
-
-        decoder_features = encoder_features[::-1]
-        decoder_features[-1] = decoder_features[-2]
-
-        self.size_view = sizes_downsample[-1]
-
-        self.activation = nn.ELU
-
-        # if opt["activation_autoencoder"] == "ReLU":
-        #     self.activation = nn.ReLU
-        # elif opt["activation_autoencoder"] == "Tanh":
-        #     self.activation = nn.Tanh
-        # elif opt["activation_autoencoder"] == "Sigmoid":
-        #     self.activation = nn.Sigmoid
-        # elif opt["activation_autoencoder"] == "LeakyReLU":
-        #     self.activation = nn.LeakyReLU
-        # elif opt["activation_autoencoder"] == "ELU":
-        #     self.activation = nn.ELU
-        # else:
-        #     print("Wrong activation")
-        #     exit()
-
-        # Encoder
         self.encoder_features = torch.nn.Sequential()
 
         for i in range(len(encoder_features) - 1):
@@ -73,7 +42,7 @@ class LearnedPooling(torch.nn.Module):
             self.encoder_features.append(
                 MatMulLayer(sizes_downsample[i], sizes_downsample[i + 1])
             )
-            self.encoder_features.append(self.activation())
+            self.encoder_features.append(activation())
 
         self.encoder_linear = torch.nn.Sequential()
 
@@ -82,7 +51,43 @@ class LearnedPooling(torch.nn.Module):
                 torch.nn.Linear(encoder_linear[i], encoder_linear[i + 1])
             )
 
-        # Decoder
+
+    def forward(self, x):
+        x = x.permute(0, 2, 1)
+
+        x = self.encoder_features(x)
+
+        x = torch.flatten(x, start_dim=1, end_dim=2)
+
+        x = self.encoder_linear(x)
+
+        return x
+
+class Decoder(torch.nn.Module):
+    def __init__(
+            self,
+            encoder_features,
+            sizes_downsample,
+            latent_space,
+            activation,
+        ):
+        super().__init__()
+        sizes_convs_encode = [3
+                              for _ in range(len(encoder_features))]
+        sizes_convs_decode = sizes_convs_encode[::-1]
+        
+        self.size_view = sizes_downsample[-1]
+        
+        decoder_features = encoder_features[::-1]
+        decoder_features[-1] = decoder_features[-2]
+        
+        decoder_linear = [
+            latent_space,
+            encoder_features[-1] * sizes_downsample[-1],
+        ]
+        
+        sizes_upsample = sizes_downsample[::-1]
+
         self.decoder_linear = torch.nn.Sequential()
 
         for i in range(len(decoder_linear) - 1):
@@ -105,7 +110,7 @@ class LearnedPooling(torch.nn.Module):
                     padding=sizes_convs_decode[i] // 2,
                 )
             )
-            self.decoder_features.append(self.activation())
+            self.decoder_features.append(activation())
 
         self.last_conv = torch.nn.Conv1d(
             decoder_features[-1],
@@ -114,24 +119,7 @@ class LearnedPooling(torch.nn.Module):
             padding=sizes_convs_decode[-1] // 2,
         )
 
-        self.means_stds = means_stds
-
-    def enc(self, x):
-        # standardize
-        x = x - self.means_stds[0]
-        x = x / self.means_stds[1]
-
-        x = x.permute(0, 2, 1)
-
-        x = self.encoder_features(x)
-
-        x = torch.flatten(x, start_dim=1, end_dim=2)
-
-        x = self.encoder_linear(x)
-
-        return x
-
-    def dec(self, x):
+    def forward(self, x):
         x = self.decoder_linear(x)
 
         x = x.view(x.shape[0], -1, self.size_view)
@@ -142,11 +130,47 @@ class LearnedPooling(torch.nn.Module):
 
         x = x.permute(0, 2, 1)
 
-        # destandardize
-        x = x * self.means_stds[1]
-        x = x + self.means_stds[0]
-
         return x
+
+class LearnedPooling(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+
+        encoder_features = [3,32,64]
+
+        sizes_downsample = [1024,64,32]
+
+        self.latent_space = 256
+
+        self.activation = nn.ELU
+
+        # if opt["activation_autoencoder"] == "ReLU":
+        #     self.activation = nn.ReLU
+        # elif opt["activation_autoencoder"] == "Tanh":
+        #     self.activation = nn.Tanh
+        # elif opt["activation_autoencoder"] == "Sigmoid":
+        #     self.activation = nn.Sigmoid
+        # elif opt["activation_autoencoder"] == "LeakyReLU":
+        #     self.activation = nn.LeakyReLU
+        # elif opt["activation_autoencoder"] == "ELU":
+        #     self.activation = nn.ELU
+        # else:
+        #     print("Wrong activation")
+        #     exit()
+
+        # Encoder
+
+        self.encoder = Encoder(encoder_features, sizes_downsample, self.latent_space, self.activation)
+
+        # Decoder
+
+        self.decoder = Decoder(encoder_features, sizes_downsample, self.latent_space, self.activation)
+
+    def enc(self, x):
+        return self.encoder(x)
+
+    def dec(self, x):
+        return self.decoder(x)
 
     def forward(self, x):
         unsqueeze = False
