@@ -1,2 +1,6 @@
 **/test_*
 **/*.pkl
+*__init__*
+__pycache__/
+/data
+/save
