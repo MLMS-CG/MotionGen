@@ -50,5 +50,6 @@ def create_gaussian_diffusion(args, means_stds):
         loss_type=loss_type,
         rescale_timesteps=rescale_timesteps,
         means_stds = means_stds,
-        lambda_mm = args.lambda_mesh_mse
+        lambda_mm = args.lambda_mesh_mse,
+        lambda_mv = args.lambda_mesh_velo
     )

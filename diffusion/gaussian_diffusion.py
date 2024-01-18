@@ -137,6 +137,7 @@ class GaussianDiffusion:
         model_var_type,
         loss_type,
         lambda_mm=1,
+        lambda_mv=1,
         rescale_timesteps=False,
         means_stds = None
     ):
@@ -147,6 +148,7 @@ class GaussianDiffusion:
         self.means_stds = means_stds
 
         self.lambda_mm = lambda_mm
+        self.lambda_mv = lambda_mv
 
         # Use float64 for accuracy.
         betas = np.array(betas, dtype=np.float64)
@@ -701,10 +703,10 @@ class GaussianDiffusion:
 
         for i in indices:
             t = th.tensor([i] * shape[0], device=device)
-            if randomize_class and 'y' in model_kwargs:
-                model_kwargs['y'] = th.randint(low=0, high=model.num_classes,
-                                               size=model_kwargs['y'].shape,
-                                               device=model_kwargs['y'].device)
+            # if randomize_class and 'y' in model_kwargs:
+                # model_kwargs['y'] = th.randint(low=0, high=model.num_classes,
+                #                                size=model_kwargs['y'].shape,
+                #                                device=model_kwargs['y'].device)
             with th.no_grad():
                 sample_fn = self.p_sample_with_grad if cond_fn_with_grad else self.p_sample
                 out = sample_fn(
@@ -1284,15 +1286,21 @@ class GaussianDiffusion:
         mesh_output = torch.matmul(evecs, reversed_model_output)
         mesh_start = torch.matmul(evecs, reversed_x_start)
 
+        terms["mse"] = (self.l2_loss(target, model_output)*self.means_stds[1]).sum((2,3)).mean(1) # mean_flat(rot_mse)
+        terms["mesh_mse"] = self.l2_loss(mesh_output, mesh_start).sum((2,3)).mean(1)
 
+        mesh_velo = torch.abs(mesh_start[:,1:,:,:]-mesh_start[:,:-1,:,:])
 
-        terms["mse"] = (self.l2_loss(target, model_output)*self.means_stds[1]).mean((1,2,3)) # mean_flat(rot_mse)
-        terms["mesh_mse"] = self.l2_loss(mesh_output, mesh_start).mean((1,2,3))
+        terms["mesh_velo"] = self.l2_loss(
+            (mesh_start[:,1:,:,:]-mesh_start[:,:-1,:,:]),
+            (mesh_output[:,1:,:,:]-mesh_output[:,:-1,:,:])
+        ).sum((2,3)).mean(1)
         
-        lambda_mesh_loss = _extract_into_tensor(self.alphas_cumprod, t, terms["mesh_mse"].shape)
+        lambda_mesh = _extract_into_tensor(self.alphas_cumprod, t, terms["mesh_mse"].shape)
 
         terms["loss"] = terms["mse"] + terms.get('vb', 0.)\
-              + lambda_mesh_loss * self.lambda_mm*terms["mesh_mse"]
+               + lambda_mesh * self.lambda_mm*terms["mesh_mse"]\
+               + lambda_mesh * self.lambda_mv*terms["mesh_velo"]
 
         return terms
 

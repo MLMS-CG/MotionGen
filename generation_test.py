@@ -15,6 +15,9 @@ from visualize.visualization import seq2imgs
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 
+
+path = "./save/x0_linear_mesh1_velo1/"
+
 with open("preProcessing/default_options_dataset.json", "r") as outfile:
     opt = json.load(outfile)
 
@@ -33,9 +36,22 @@ with open(path_faces, "r+b") as f:
     mm = mmap.mmap(f.fileno(), 0)
     smpl_faces = np.frombuffer(mm[:], dtype=np.intc).reshape(-1, 3)
 
-args = train_args()
+class dotdict(dict):
+    """dot.notation access to dictionary attributes"""
+    __getattr__ = dict.get
+    __setattr__ = dict.__setitem__
+    __delattr__ = dict.__delitem__
 
-def get_result_iter(model, diffusion, data, t):
+
+with open(path + "args.json", "r") as outfile:
+    args = dotdict(json.load(outfile))
+
+def get_result(model, diffusion, shape):
+    data = diffusion.p_sample_loop(model, shape, clip_denoised=False)
+    return data.to("cpu").detach().numpy()
+
+
+def get_x0_result_iter(model, diffusion, data, t):
     t = torch.tensor(t).to("cuda")
     data = torch.tensor(data).to("cuda").unsqueeze(0)
     noise = torch.randn_like(data)
@@ -46,17 +62,6 @@ def get_result_iter(model, diffusion, data, t):
             t -= 1
 
     return data[0].to("cpu").detach().numpy()
-
-def get_result(model, diffusion, data, t):
-    t = torch.tensor(t).to("cuda")
-    data = torch.tensor(data).to("cuda").unsqueeze(0)
-    noise = torch.randn_like(data)
-
-    data_t = diffusion.q_sample(data, t, noise)
-    data = model(data_t, t)
-
-    return data[0].to("cpu").detach().numpy()
-
 
 def result2mesh(data):
     meshes = np.matmul(evecs.cpu().numpy(), data)
@@ -77,17 +82,14 @@ def training_perform():
     # load checkpoints
     model.load_state_dict(
         dist_util.load_state_dict(
-            "./save/unconditioned_concat_x0/model000030000.pt", map_location=dist_util.dev()
+            path + "model000050000.pt", map_location=dist_util.dev()
         )
     )
     model.eval()
 
-    data = train_data.__getitem__(20)
-    result = get_result(model, diffusion, data, [1999])
+    result = get_result(model, diffusion, (12,90,1024,3))
     mean, std = train_data.means_stds
-    ori_verts = np.matmul(evecs.cpu().numpy(), data*std+mean)
-    rec_verts = np.matmul(evecs.cpu().numpy(), result*std+mean)
-    ori_meshes = [trimesh.Trimesh(mesh, smpl_faces) for mesh in ori_verts]
+    rec_verts = np.matmul(evecs.cpu().numpy(), result[0]*std+mean)
     rec_meshes = [trimesh.Trimesh(mesh, smpl_faces) for mesh in rec_verts]
     seq_imgs = seq2imgs(rec_meshes)
     frames = []

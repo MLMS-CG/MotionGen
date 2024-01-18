@@ -70,8 +70,8 @@ class Baseline(nn.Module):
 
         return output
     
-    def parameters(self):
-        return [p for name, p in self.named_parameters()]
+    # def parameters(self):
+    #     return [p for name, p in self.named_parameters()]
     
     def enc_static(self, x):
         resize = False

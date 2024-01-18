@@ -66,13 +66,14 @@ def add_base_options(parser):
 def add_diffusion_options(parser):
     group = parser.add_argument_group('diffusion')
     group.add_argument("--learn_sigma", default=False, type=bool)
-    group.add_argument("--target", default="epsilon", choices=['epsilon', 'x0'], type=str)
-    group.add_argument("--noise_schedule", default='cosine', choices=['linear', 'cosine'], type=str,
+    group.add_argument("--target", default="x0", choices=['epsilon', 'x0'], type=str)
+    group.add_argument("--noise_schedule", default='linear', choices=['linear', 'cosine'], type=str,
                        help="Noise schedule type")
     group.add_argument("--diffusion_steps", default=2000, type=int,
                        help="Number of diffusion steps (denoted T in the paper)")
     group.add_argument("--sigma_small", default=True, type=bool, help="Use smaller sigma values.")
     group.add_argument("--lambda_mesh_mse", default=1, type=float)
+    group.add_argument("--lambda_mesh_velo", default=1, type=float)
 
 
 def add_model_options(parser):
@@ -111,14 +112,14 @@ def add_data_options(parser):
 
 def add_training_options(parser):
     group = parser.add_argument_group('training')
-    group.add_argument("--save_dir", default="save/test", type=str,
+    group.add_argument("--save_dir", default="save/x0", type=str,
                        help="Path to save checkpoints and results.")
     group.add_argument("--overwrite", action='store_true',
                        help="If True, will enable to use an already existing save_dir.")
-    group.add_argument("--train_platform_type", default='NoPlatform', choices=['NoPlatform', 'ClearmlPlatform', 'TensorboardPlatform'], type=str,
+    group.add_argument("--train_platform_type", default='ClearmlPlatform', choices=['NoPlatform', 'ClearmlPlatform', 'TensorboardPlatform'], type=str,
                        help="Choose platform to log results. NoPlatform means no logging.")
     group.add_argument("--lr", default=1e-4, type=float, help="Learning rate.")
-    group.add_argument("--weight_decay", default=0.0, type=float, help="Optimizer weight decay.")
+    group.add_argument("--weight_decay", default=0.1, type=float, help="Optimizer weight decay.")
     group.add_argument("--lr_anneal_steps", default=0, type=int, help="Number of learning rate anneal steps.")
     group.add_argument("--eval_batch_size", default=32, type=int,
                        help="Batch size during evaluation loop. Do not change this unless you know what you are doing. "
@@ -135,7 +136,7 @@ def add_training_options(parser):
                        help="Log losses each N steps")
     group.add_argument("--save_interval", default=1_000, type=int,
                        help="Save checkpoints and run evaluation each N steps")
-    group.add_argument("--num_steps", default=30_000, type=int,
+    group.add_argument("--num_steps", default=50_000, type=int,
                        help="Training will stop after the specified number of steps.")
     group.add_argument("--num_frames", default=60, type=int,
                        help="Limit for the maximal number of frames. In HumanML3D and KIT this field is ignored.")
