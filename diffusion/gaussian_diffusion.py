@@ -1231,7 +1231,6 @@ class GaussianDiffusion:
                  Some mean or variance settings may also have other keys.
         """
 
-
         if model_kwargs is None:
             model_kwargs = {}
         if noise is None:
@@ -1289,7 +1288,7 @@ class GaussianDiffusion:
         terms["mse"] = (self.l2_loss(target, model_output)*self.means_stds[1]).sum((2,3)).mean(1) # mean_flat(rot_mse)
         terms["mesh_mse"] = self.l2_loss(mesh_output, mesh_start).sum((2,3)).mean(1)
 
-        mesh_velo = torch.abs(mesh_start[:,1:,:,:]-mesh_start[:,:-1,:,:])
+        # mesh_velo = torch.abs(mesh_start[:,1:,:,:]-mesh_start[:,:-1,:,:])
 
         terms["mesh_velo"] = self.l2_loss(
             (mesh_start[:,1:,:,:]-mesh_start[:,:-1,:,:]),

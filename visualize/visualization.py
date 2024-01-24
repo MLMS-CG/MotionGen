@@ -38,7 +38,7 @@ def animate_imgs(seq_imgs):
 
     
 
-def seq2imgs(meshes):
+def seq2imgs(meshes, width=512, length=512, x_bias=0, z_bias=2):
     seq_imgs = []
 
     for mesh in meshes:
@@ -46,20 +46,23 @@ def seq2imgs(meshes):
 
         # compose scene
         scene = pyrender.Scene(ambient_light=[.1, .1, .3], bg_color=[0, 0, 0])
-        camera = pyrender.PerspectiveCamera( yfov=np.pi / 4.0)
+        camera = pyrender.PerspectiveCamera( yfov=np.pi / 3.0)
         light = pyrender.DirectionalLight(color=[1,1,1], intensity=2e3)
 
         scene.add(pmesh, pose=np.eye(4))
         scene.add(light, pose=np.eye(4))
 
-        c = 2**-0.5
-        scene.add(camera, pose=[[ 1,  0,  0,  0],
-                                [ 0,  c, -c, -2],
-                                [ 0,  c,  c,  2],
+        c = (0/180)*np.pi
+        sinc = np.sin(c)
+        cosc = np.cos(c)
+        # rotate along axis X with certain degree
+        scene.add(camera, pose=[[ 1,  0,  0,  x_bias],
+                                [ 0,  cosc, -sinc, -0.3],
+                                [ 0,  sinc,  cosc,  z_bias],
                                 [ 0,  0,  0,  1]])
 
         # render scene
-        r = pyrender.OffscreenRenderer(512, 512)
+        r = pyrender.OffscreenRenderer(width, length)
         color, _ = r.render(scene)
         seq_imgs.append(color)
     return seq_imgs

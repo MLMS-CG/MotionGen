@@ -38,6 +38,7 @@ class TrainLoop:
         self.fp16_scale_growth = 1e-3  # deprecating this option
         self.weight_decay = args.weight_decay
         self.lr_anneal_steps = args.lr_anneal_steps
+        self.return_gender = args.return_gender
 
         self.step = 0
         self.resume_step = 0
@@ -104,10 +105,14 @@ class TrainLoop:
         for epoch in range(self.num_epochs):
             print(f'Starting epoch {epoch}')
             for motion in tqdm(self.train_data):
+
                 if not (not self.lr_anneal_steps or self.step + self.resume_step < self.lr_anneal_steps):
                     break
 
-                motion = motion.to(self.device)
+                if isinstance(motion, list):
+                    motion = [item.to(self.device) for item in motion]
+                else:
+                    motion = motion.to(self.device)
 
                 self.run_step(motion)
                 if self.step % self.log_interval == 0:
@@ -144,13 +149,22 @@ class TrainLoop:
         start_eval = time.time()
         losses = []
         for motion in tqdm(self.val_data):
-            motion = motion.to(self.device)
+            cond = None
+            if isinstance(motion, list):
+                motion = [item.to(self.device) for item in motion]
+                motion, gender = motion
+                cond = {"gender":gender}
+            else:
+                motion = motion.to(self.device)
+
+            
             t, weights = self.schedule_sampler.sample(motion.shape[0], dist_util.dev())
             compute_losses = functools.partial(
                 self.diffusion.training_losses,
                 self.ddp_model,
                 motion,  # [bs, ch, image_size, image_size]
                 t,  # [bs](int) sampled timesteps
+                model_kwargs=cond
             )
 
             loss = (compute_losses()["loss"] * weights).mean()
@@ -167,7 +181,12 @@ class TrainLoop:
 
     def forward_backward(self, batch):
         self.mp_trainer.zero_grad()
-            
+
+        cond = None
+        if isinstance(batch, list):
+            batch, gender = batch
+            cond = {"gender":gender}
+
         t, weights = self.schedule_sampler.sample(batch.shape[0], dist_util.dev())
 
         compute_losses = functools.partial(
@@ -175,6 +194,7 @@ class TrainLoop:
             self.ddp_model,
             batch,  # [bs, ch, image_size, image_size]
             t,  # [bs](int) sampled timesteps
+            model_kwargs = cond
         )
 
         losses = compute_losses()

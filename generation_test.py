@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 
 
-path = "./save/x0_linear_mesh1_velo1/"
+path = "./save/newdata_gender_x0_linear_mesh1_velo1/"
 
 with open("preProcessing/default_options_dataset.json", "r") as outfile:
     opt = json.load(outfile)
@@ -46,8 +46,8 @@ class dotdict(dict):
 with open(path + "args.json", "r") as outfile:
     args = dotdict(json.load(outfile))
 
-def get_result(model, diffusion, shape):
-    data = diffusion.p_sample_loop(model, shape, clip_denoised=False)
+def get_result(model, diffusion, shape, model_kwargs=None):
+    data = diffusion.p_sample_loop(model, shape, clip_denoised=False, model_kwargs=model_kwargs)
     return data.to("cpu").detach().numpy()
 
 
@@ -67,11 +67,9 @@ def result2mesh(data):
     meshes = np.matmul(evecs.cpu().numpy(), data)
     return meshes
 
-
 def training_perform():
     train_data = get_dataset("train", args.data_dir, args.nb_freqs, args.offset, args.size_window, None)
     means_stds = train_data.means_stds
-    val = get_dataset("val", args.data_dir, args.nb_freqs, 1, args.size_window, means_stds)
 
     means_stds = [torch.tensor(ele) for ele in means_stds]
     if args.cuda:
@@ -87,11 +85,33 @@ def training_perform():
     )
     model.eval()
 
-    result = get_result(model, diffusion, (12,90,1024,3))
     mean, std = train_data.means_stds
-    rec_verts = np.matmul(evecs.cpu().numpy(), result[0]*std+mean)
-    rec_meshes = [trimesh.Trimesh(mesh, smpl_faces) for mesh in rec_verts]
-    seq_imgs = seq2imgs(rec_meshes)
+
+    def render_batch(res_mesh):
+        rec_verts = np.matmul(evecs.cpu().numpy(), res_mesh*std+mean)
+        rec_meshes = []
+        for frame in range(rec_verts.shape[1]):
+            shapes = rec_verts[:,frame,:,:]
+            verts = []
+            faces = []
+            for i in np.arange(len(shapes)):
+                verts.append(shapes[i]+(i*0.6,0,0))
+                faces.append(smpl_faces+6890*i)
+            verts = np.concatenate(verts, axis=0)
+            faces = np.concatenate(faces, axis=0)
+            rec_meshes.append(trimesh.Trimesh(verts, faces))
+        seq_imgs = seq2imgs(rec_meshes, z_bias=2.2, x_bias=2.1, width=1200)
+        return seq_imgs
+
+    def render_single(res_mesh, index):
+        rec_verts = np.matmul(evecs.cpu().numpy(), res_mesh[index]*std+mean)
+        rec_meshes = [trimesh.Trimesh(mesh, smpl_faces) for mesh in rec_verts]
+        seq_imgs = seq2imgs(rec_meshes)
+        return seq_imgs
+    
+    gender = torch.ones(8, dtype=torch.int64).cuda()
+    result = get_result(model, diffusion, (8,90,1024,3), {"gender":gender})
+    seq_imgs = render_single(result, 0)
     frames = []
     fig = plt.figure()
     for i in seq_imgs:

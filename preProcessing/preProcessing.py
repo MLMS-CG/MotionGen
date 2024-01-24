@@ -146,32 +146,33 @@ def fill_dataset(seqInfos):
             )
 
             subject_gender = npz_data["gender"]
-
-            if subject_gender == "male":
-                current_bm = bm_male
-                gender_array = np.array(0, dtype=int)
-            elif subject_gender == "female":
-                current_bm = bm_female
-                gender_array = np.array(1, dtype=int)
-            else:
-                print('neutral gender')
-                exit()
-
-            gender_array.tofile(genders_file)
+            
             # fps during caption
             mocap_framerate = npz_data["mocap_framerate"]
             length = len(npz_data["poses"])
             timeStamp = np.arange(length) * 1/mocap_framerate
             # index for down sample and for certain time period
             for info in seqInfos[sequence_path]:
+
                 action, startTime, endTime = info
                 # select based on time period
-                selectedIndex = (np.where(timeStamp>=startTime) and np.where(timeStamp<=endTime))[0]
+                selectedIndex = np.where((timeStamp>=startTime) & (timeStamp<=endTime))[0]
                 # down sample
                 sampledNum = int((endTime - startTime) * opt["framerate"])
                 if sampledNum<=0:
                     continue
                 selected = (np.round(np.linspace(selectedIndex[0], selectedIndex[-1], num = sampledNum, endpoint=True))).astype(np.int16)
+
+                if subject_gender == "male":
+                    current_bm = bm_male
+                    gender_array = np.array(0, dtype=int)
+                elif subject_gender == "female":
+                    current_bm = bm_female
+                    gender_array = np.array(1, dtype=int)
+                else:
+                    print('neutral gender')
+                    exit()
+                gender_array.tofile(genders_file)
 
                 new_npz_data = {}
 
@@ -199,7 +200,15 @@ def fill_dataset(seqInfos):
                 length = 0
 
                 for i in range(0, len(new_npz_data["trans"][:]), max_len):
+                    trans = new_npz_data["trans"][i: i + max_len, :]
+                    trans = trans - trans[0]
                     body_parms = {
+                        # "root_orient": torch.Tensor(
+                        #     new_npz_data["poses"][i: i + max_len, 0:3]
+                        # ).to(opt["device"]),
+                        # "trans": torch.Tensor(
+                        #     trans
+                        # ).to(opt["device"]),
                         # controls the body
                         "pose_body": torch.Tensor(
                             new_npz_data["poses"][i: i + max_len, 3:66]

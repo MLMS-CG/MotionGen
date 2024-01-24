@@ -6,26 +6,30 @@ from model.encdec import Encoder, Decoder, LearnedPooling
 
 
 class Baseline(nn.Module):
-    def __init__(self, size_window, t_emb, learn_sigma, 
-                 latent_dim=256, ff_size=1024, num_layers=8, num_heads=4, dropout=0.1,
-                 activation="gelu", **kargs):
+    def __init__(self, *args,**kargs):
         super().__init__()
 
-        self.size_window = size_window
+        self.size_window = kargs["size_window"]
+        self.latent_dim = kargs["latent_dim"]
 
-        self.latent_dim = latent_dim
+        self.ff_size = kargs["ff_size"]
+        self.num_layers = kargs["num_layers"]
+        self.num_heads = kargs["num_heads"]
 
-        self.ff_size = ff_size
-        self.num_layers = num_layers
-        self.num_heads = num_heads
+        self.dropout = kargs["dropout"]
+        self.activation = kargs["activation"]
 
-        if t_emb == "concat":
+        self.gender = kargs["gender_in"]
+
+        if kargs["t_emb"] == "concat":
             self.t_emb = lambda a, b: torch.concat([a, b], dim=1)
-        if t_emb =="add":
+        if kargs["t_emb"] =="add":
             self.t_emb = lambda a, b: a+b
 
         self.positional_encoding = PositionalEncoding(self.latent_dim)
         self.embed_timestep = TimestepEmbedder(self.latent_dim, self.positional_encoding)
+        if self.gender:
+            self.embed_gender = TimestepEmbedder(self.latent_dim, self.positional_encoding)
 
         self.module_static = LearnedPooling()
 
@@ -33,40 +37,39 @@ class Baseline(nn.Module):
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=self.latent_dim,
             nhead=self.num_heads,
-            dim_feedforward=ff_size,
-            dropout=dropout,
-            activation=activation
+            dim_feedforward=self.ff_size,
+            dropout=self.dropout,
+            activation=self.activation
         )
 
         self.transformer_encoder = nn.TransformerEncoder(
-            encoder_layer=encoder_layer, num_layers=num_layers
+            encoder_layer=encoder_layer, num_layers=self.num_layers
         )
         self.encoder_first_linear = nn.Linear(self.latent_dim, self.latent_dim)
         self.encoder_end_linear = nn.Linear(self.latent_dim, self.latent_dim)
 
-        # encoder_features = [3,32,64]
-        # sizes_downsample = [1024,64,32]
-        # self.encoder = Encoder(encoder_features, sizes_downsample, self.latent_dim, nn.ELU)
-        # self.decoder = Decoder(encoder_features, sizes_downsample, self.latent_dim, nn.ELU)
+        
+    
 
-    def forward(self, x, timesteps, y=None):
+    def forward(self, x, timesteps, gender=None):
         """
         x: [batch_size, sequence_len, nbfreq, 3], denoted x_t in the paper
         timesteps: [batch_size] (int)
         """
+        
         emb = self.embed_timestep(timesteps)  # [1, bs, d]
         output_static = self.enc_static(x)
         
         # timesteps embedding
-        output_static = self.t_emb(emb, output_static) 
+        if self.gender:
+            gender_emb = self.embed_gender(gender)
+            output_static = self.t_emb(emb+gender_emb, output_static) 
+        else:
+            output_static = self.t_emb(emb, output_static) 
 
         output_transformer = self.enc_transformer(output_static)[:,-self.size_window:,:]
 
         output = self.dec_static(output_transformer)
-        
-        # if self.learn_sigma:
-        #     output_var = self.dec_static(output_transformer, self.vardec)
-        #     return torch.concat([output, output_var], dim=1)
 
         return output
     
@@ -154,3 +157,45 @@ class TimestepEmbedder(nn.Module):
 
     def forward(self, timesteps):
         return self.time_embed(self.sequence_pos_encoder.pe[timesteps])
+
+
+class PredictSigma(Baseline):
+    def __init__(self, *args,**kargs):
+        super().__init__(*args, **kargs)
+        encoder_features = [3,32,64]
+        sizes_downsample = [1024,64,32]
+        self.decoder = Decoder(encoder_features, sizes_downsample, kargs["latent_dim"], nn.ELU)
+    
+    def dec_var(self, x):
+        resize = False
+
+        if x.dim() == 3:
+            batch_size = x.size(0)
+            n_frames = x.size(1)
+            resize = True
+            x = torch.flatten(x, 0, 1)
+
+        x = self.decoder(x)
+
+        if resize:
+            x = x.view(batch_size, n_frames, -1, 3)
+
+        return x
+    
+    def forward(self, x, timesteps, y=None):
+        """
+        x: [batch_size, sequence_len, nbfreq, 3], denoted x_t in the paper
+        timesteps: [batch_size] (int)
+        """
+        emb = self.embed_timestep(timesteps)  # [1, bs, d]
+        output_static = self.enc_static(x)
+        
+        # timesteps embedding
+        output_static = self.t_emb(emb, output_static) 
+
+        output_transformer = self.enc_transformer(output_static)[:,-self.size_window:,:]
+
+        output = self.dec_static(output_transformer)
+
+        output_var = self.dec_var(output_transformer)
+        return torch.concat([output, output_var], dim=1)

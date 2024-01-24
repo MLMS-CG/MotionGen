@@ -65,7 +65,7 @@ def add_base_options(parser):
 
 def add_diffusion_options(parser):
     group = parser.add_argument_group('diffusion')
-    group.add_argument("--learn_sigma", default=False, type=bool)
+    group.add_argument("--learn_sigma", action='store_true')
     group.add_argument("--target", default="x0", choices=['epsilon', 'x0'], type=str)
     group.add_argument("--noise_schedule", default='linear', choices=['linear', 'cosine'], type=str,
                        help="Noise schedule type")
@@ -98,7 +98,6 @@ def add_model_options(parser):
                             "Currently tested on HumanAct12 only.")
 
 
-
 def add_data_options(parser):
     group = parser.add_argument_group('dataset')
     with open("preProcessing/default_options_dataset.json", "r") as outfile:
@@ -108,15 +107,15 @@ def add_data_options(parser):
     group.add_argument("--nb_freqs", default=opt["nb_freqs"], type=int)
     group.add_argument("--data_dir", default=opt["path_dataset"], type=str,
                        help="If empty, will use defaults according to the specified dataset.")
-
+    group.add_argument("--return_gender", action='store_true')
 
 def add_training_options(parser):
     group = parser.add_argument_group('training')
-    group.add_argument("--save_dir", default="save/x0", type=str,
+    group.add_argument("--save_dir", default="save/gender_x0_linear_mesh1_velo1", type=str,
                        help="Path to save checkpoints and results.")
     group.add_argument("--overwrite", action='store_true',
                        help="If True, will enable to use an already existing save_dir.")
-    group.add_argument("--train_platform_type", default='ClearmlPlatform', choices=['NoPlatform', 'ClearmlPlatform', 'TensorboardPlatform'], type=str,
+    group.add_argument("--train_platform_type", default='ClearmlPlatform', choices=['ClearmlPlatform', 'ClearmlPlatform', 'TensorboardPlatform'], type=str,
                        help="Choose platform to log results. NoPlatform means no logging.")
     group.add_argument("--lr", default=1e-4, type=float, help="Learning rate.")
     group.add_argument("--weight_decay", default=0.1, type=float, help="Optimizer weight decay.")

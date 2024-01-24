@@ -34,10 +34,10 @@ def main():
     print("creating data loader...")
 
     train_data, means_stds = get_dataset_loader(
-        "train", args.data_dir, args.batch_size, args.nb_freqs, args.offset, args.size_window
+        "train", args.data_dir, args.batch_size, args.nb_freqs, args.offset, args.size_window, return_gender=args.return_gender
     )
     val_data, _ = get_dataset_loader(
-        "val",  args.data_dir, args.batch_size, args.nb_freqs, args.offset, args.size_window, means_stds
+        "val",  args.data_dir, args.batch_size, args.nb_freqs, args.offset, args.size_window, means_stds, return_gender=args.return_gender
     )
 
     if args.cuda:
