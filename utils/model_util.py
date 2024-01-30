@@ -16,9 +16,10 @@ def create_unconditioned_model_and_diffusion(args, means_stds):
     return model, diffusion
 
 def get_model_args(args,):
-    return {'size_window': args.size_window, 't_emb': args.t_emb, 
+    return {'size_window': args.size_window, 't_emb': args.t_emb, 'shape':args.shape_rep,
             'latent_dim': args.latent_dim, 'ff_size': 1024, 'num_layers': args.layers, 'num_heads': 4,
-            'dropout': 0.1, 'activation': "gelu", 'gender_in': args.return_gender}
+            'dropout': 0.1, 'activation': "gelu", 'gender_in': args.return_gender,
+            'batch_size': args.batch_size, 'n_frames':args.size_window}
 
 
 def create_gaussian_diffusion(args, means_stds):
@@ -28,6 +29,7 @@ def create_gaussian_diffusion(args, means_stds):
     scale_beta = 1.  # no scaling
     timestep_respacing = ''  # can be used for ddim sampling, we don't use it.
     learn_sigma = args.learn_sigma
+    learn_shape = args.shape_rep
     rescale_timesteps = False
 
     betas = gd.get_named_beta_schedule(args.noise_schedule, steps, scale_beta)
@@ -55,5 +57,7 @@ def create_gaussian_diffusion(args, means_stds):
         rescale_timesteps=rescale_timesteps,
         means_stds = means_stds,
         lambda_mm = args.lambda_mesh_mse,
-        lambda_mv = args.lambda_mesh_velo
+        lambda_mv = args.lambda_mesh_velo,
+        lambda_shape = args.lambda_shape,
+        learn_shape = learn_shape
     )

@@ -65,6 +65,7 @@ def add_base_options(parser):
 
 def add_diffusion_options(parser):
     group = parser.add_argument_group('diffusion')
+    group.add_argument("--shape_rep", action="store_true")
     group.add_argument("--learn_sigma", action='store_true')
     group.add_argument("--target", default="x0", choices=['epsilon', 'x0'], type=str)
     group.add_argument("--noise_schedule", default='linear', choices=['linear', 'cosine'], type=str,
@@ -74,6 +75,7 @@ def add_diffusion_options(parser):
     group.add_argument("--sigma_small", default=True, type=bool, help="Use smaller sigma values.")
     group.add_argument("--lambda_mesh_mse", default=1, type=float)
     group.add_argument("--lambda_mesh_velo", default=1, type=float)
+    group.add_argument("--lambda_shape", default=1, type=float)
 
 
 def add_model_options(parser):
@@ -115,7 +117,7 @@ def add_training_options(parser):
                        help="Path to save checkpoints and results.")
     group.add_argument("--overwrite", action='store_true',
                        help="If True, will enable to use an already existing save_dir.")
-    group.add_argument("--train_platform_type", default='ClearmlPlatform', choices=['ClearmlPlatform', 'ClearmlPlatform', 'TensorboardPlatform'], type=str,
+    group.add_argument("--train_platform_type", default='NoPlatform', choices=['NoPlatform', 'ClearmlPlatform', 'TensorboardPlatform'], type=str,
                        help="Choose platform to log results. NoPlatform means no logging.")
     group.add_argument("--lr", default=1e-4, type=float, help="Learning rate.")
     group.add_argument("--weight_decay", default=0.1, type=float, help="Optimizer weight decay.")

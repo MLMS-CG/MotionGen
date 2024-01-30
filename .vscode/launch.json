@@ -12,7 +12,13 @@
             "console": "integratedTerminal",
             "justMyCode": true,
             "args": [
-                "--return_gender"
+                "--shape_rep",
+                "--save_dir", "save/test",
+                "--data_dir", "data/datasets/dataset_MI_1024/",
+                "--train_platform_type", "NoPlatform",
+                "--batch_size", "48",
+                "--t_emb", "add",
+                "--lambda_shape", "10"
             ]
         }
     ]

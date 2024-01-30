@@ -18,8 +18,11 @@ class Baseline(nn.Module):
 
         self.dropout = kargs["dropout"]
         self.activation = kargs["activation"]
+        self.batch_size = kargs["batch_size"]
+        self.n_frames = kargs["n_frames"]
 
         self.gender = kargs["gender_in"]
+        self.shape = kargs["shape"]
 
         if kargs["t_emb"] == "concat":
             self.t_emb = lambda a, b: torch.concat([a, b], dim=1)
@@ -30,6 +33,11 @@ class Baseline(nn.Module):
         self.embed_timestep = TimestepEmbedder(self.latent_dim, self.positional_encoding)
         if self.gender:
             self.embed_gender = TimestepEmbedder(self.latent_dim, self.positional_encoding)
+        
+        self.encoder_features = [3,32,64]
+        self.sizes_downsample = [1024,64,32]
+        if self.shape:
+            self.shape_enc = nn.Linear(self.latent_dim, self.latent_dim)
 
         self.module_static = LearnedPooling()
 
@@ -49,7 +57,13 @@ class Baseline(nn.Module):
         self.encoder_end_linear = nn.Linear(self.latent_dim, self.latent_dim)
 
         
-    
+    def shape_pre(self, x, timesteps):
+        output_static = self.enc_static(x)
+        emb = self.embed_timestep(timesteps)
+        output_cond = self.t_emb(emb, output_static) 
+        shape = self.shape_enc(output_cond)
+        return shape
+        
 
     def forward(self, x, timesteps, gender=None):
         """
@@ -63,11 +77,11 @@ class Baseline(nn.Module):
         # timesteps embedding
         if self.gender:
             gender_emb = self.embed_gender(gender)
-            output_static = self.t_emb(emb+gender_emb, output_static) 
+            output_cond = self.t_emb(emb+gender_emb, output_static) 
         else:
-            output_static = self.t_emb(emb, output_static) 
+            output_cond = self.t_emb(emb, output_static) 
 
-        output_transformer = self.enc_transformer(output_static)[:,-self.size_window:,:]
+        output_transformer = self.enc_transformer(output_cond)[:,-self.size_window:,:]
 
         output = self.dec_static(output_transformer)
 
@@ -80,15 +94,13 @@ class Baseline(nn.Module):
         resize = False
 
         if x.dim() == 4:
-            batch_size = x.size(0)
-            n_frames = x.size(1)
             resize = True
             x = torch.flatten(x, 0, 1)
 
         x = self.module_static.enc(x)
 
         if resize:
-            x = x.view(batch_size, n_frames, -1)
+            x = x.view(self.batch_size, self.n_frames, -1)
 
         return x
 
@@ -96,15 +108,13 @@ class Baseline(nn.Module):
         resize = False
 
         if x.dim() == 3:
-            batch_size = x.size(0)
-            n_frames = x.size(1)
             resize = True
             x = torch.flatten(x, 0, 1)
 
         x = self.module_static.dec(x)
 
         if resize:
-            x = x.view(batch_size, n_frames, -1, 3)
+            x = x.view(self.batch_size, self.n_frames, -1, 3)
 
         return x
     
@@ -158,13 +168,10 @@ class TimestepEmbedder(nn.Module):
     def forward(self, timesteps):
         return self.time_embed(self.sequence_pos_encoder.pe[timesteps])
 
-
 class PredictSigma(Baseline):
     def __init__(self, *args,**kargs):
         super().__init__(*args, **kargs)
-        encoder_features = [3,32,64]
-        sizes_downsample = [1024,64,32]
-        self.decoder = Decoder(encoder_features, sizes_downsample, kargs["latent_dim"], nn.ELU)
+        self.decoder = Decoder(self.encoder_features, self.sizes_downsample, kargs["latent_dim"], nn.ELU)
     
     def dec_var(self, x):
         resize = False

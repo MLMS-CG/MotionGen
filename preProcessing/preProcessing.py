@@ -128,6 +128,7 @@ def fill_dataset(seqInfos):
     total_nb_samples = 0
 
     path_dataset_file = opt["path_dataset"] + "dataset.bin"
+    path_trans_file = opt["path_dataset"] + "trans.bin"
     path_lengths_file = opt["path_dataset"] + "lengths.bin"
     path_genders_file = opt["path_dataset"] + "genders.bin"
     path_actions_file = opt["path_dataset"] + "action.bin"
@@ -137,6 +138,7 @@ def fill_dataset(seqInfos):
             open(path_dataset_file, "wb") as dataset_file, \
             open(path_lengths_file, "wb") as lengths_file, \
             open(path_genders_file, "wb") as genders_file, \
+            open(path_trans_file, "wb") as trans_file, \
             open(path_actions_file, "wb") as actions_file:
 
         for sequence_path in seqInfos.keys():
@@ -201,11 +203,11 @@ def fill_dataset(seqInfos):
 
                 for i in range(0, len(new_npz_data["trans"][:]), max_len):
                     trans = new_npz_data["trans"][i: i + max_len, :]
-                    trans = trans - trans[0]
+                    trans.tofile(trans_file)
                     body_parms = {
-                        # "root_orient": torch.Tensor(
-                        #     new_npz_data["poses"][i: i + max_len, 0:3]
-                        # ).to(opt["device"]),
+                        "root_orient": torch.Tensor(
+                            new_npz_data["poses"][i: i + max_len, 0:3]
+                        ).to(opt["device"]),
                         # "trans": torch.Tensor(
                         #     trans
                         # ).to(opt["device"]),

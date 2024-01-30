@@ -15,7 +15,7 @@ import torch
 import torch as th
 from copy import deepcopy
 from diffusion.nn import mean_flat, sum_flat
-from diffusion.losses import normal_kl, discretized_gaussian_log_likelihood
+from diffusion.losses import normal_kl, discretized_gaussian_log_likelihood, contrastive_loss
 
 with open("preProcessing/default_options_dataset.json", "r") as outfile:
     opt = json.load(outfile)
@@ -138,8 +138,10 @@ class GaussianDiffusion:
         loss_type,
         lambda_mm=1,
         lambda_mv=1,
+        lambda_shape = 1,
         rescale_timesteps=False,
-        means_stds = None
+        means_stds = None,
+        learn_shape=False
     ):
         self.model_mean_type = model_mean_type
         self.model_var_type = model_var_type
@@ -147,8 +149,11 @@ class GaussianDiffusion:
         self.rescale_timesteps = rescale_timesteps
         self.means_stds = means_stds
 
+        self.learn_shape = learn_shape
+
         self.lambda_mm = lambda_mm
         self.lambda_mv = lambda_mv
+        self.lambda_shape = lambda_shape
 
         # Use float64 for accuracy.
         betas = np.array(betas, dtype=np.float64)
@@ -423,6 +428,13 @@ class GaussianDiffusion:
         )
         return new_mean
 
+    def condition_mean_with_grad_shape(self, cond_fn, p_mean_var, x, t):
+        gradient = cond_fn(x, t)
+        new_mean = (
+            p_mean_var["mean"].float() + p_mean_var["variance"] * gradient.float()
+        )
+        return new_mean
+
     def condition_mean_with_grad(self, cond_fn, p_mean_var, x, t, model_kwargs=None):
         """
         Compute the mean for the previous step, given a function cond_fn that
@@ -531,9 +543,14 @@ class GaussianDiffusion:
             (t != 0).float().view(-1, *([1] * (len(x.shape) - 1)))
         )  # no noise when t == 0
         if cond_fn is not None:
-            out["mean"] = self.condition_mean(
-                cond_fn, out, x, t, model_kwargs=model_kwargs
-            )
+            if self.learn_shape:
+                out["mean"] = self.condition_mean_with_grad_shape(
+                    cond_fn, out, x, t
+                )
+            else:
+                out["mean"] = self.condition_mean(
+                    cond_fn, out, x, t, model_kwargs=model_kwargs
+                )
         # print('mean', out["mean"].shape, out["mean"])
         # print('log_variance', out["log_variance"].shape, out["log_variance"])
         # print('nonzero_mask', nonzero_mask.shape, nonzero_mask)
@@ -1238,8 +1255,18 @@ class GaussianDiffusion:
         x_t = self.q_sample(x_start, t, noise=noise)
 
         terms = {}
-
         model_output = model(x_t, self._scale_timesteps(t), **model_kwargs)
+        
+        if self.learn_shape:
+            shape = model.shape_pre(x_t, self._scale_timesteps(t))
+            shape_ori = model.shape_pre(x_start, torch.zeros_like(t))
+            selected = torch.randint(90, (2,10))
+            terms['shape'] = torch.stack([
+                contrastive_loss(shape[:,selected[0,i],:], shape_ori[:, selected[1,i], :])\
+                for i in range(10)
+            ]).mean(0)
+        else:
+            model_output = model(x_t, self._scale_timesteps(t), **model_kwargs)
 
         if self.model_var_type in [
             ModelVarType.LEARNED,
@@ -1298,8 +1325,10 @@ class GaussianDiffusion:
         lambda_mesh = _extract_into_tensor(self.alphas_cumprod, t, terms["mesh_mse"].shape)
 
         terms["loss"] = terms["mse"] + terms.get('vb', 0.)\
+               + self.lambda_shape * terms.get('shape', 0.)\
                + lambda_mesh * self.lambda_mm*terms["mesh_mse"]\
                + lambda_mesh * self.lambda_mv*terms["mesh_velo"]
+
 
         return terms
 
