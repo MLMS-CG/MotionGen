@@ -3,6 +3,7 @@
 
 import json
 import torch
+import torch.nn.functional as F
 import numpy as np
 import mmap
 import trimesh
@@ -14,6 +15,9 @@ from visualize.visualization import seq2imgs
 
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
+
+torch.backends.cudnn.enabled = False
+path = "./save/rootdata_x0_linear_mesh1_velo1/"
 
 with open("preProcessing/default_options_dataset.json", "r") as outfile:
     opt = json.load(outfile)
@@ -33,9 +37,26 @@ with open(path_faces, "r+b") as f:
     mm = mmap.mmap(f.fileno(), 0)
     smpl_faces = np.frombuffer(mm[:], dtype=np.intc).reshape(-1, 3)
 
-args = train_args()
+class dotdict(dict):
+    """dot.notation access to dictionary attributes"""
+    __getattr__ = dict.get
+    __setattr__ = dict.__setitem__
+    __delattr__ = dict.__delitem__
 
-def get_result_iter(model, diffusion, data, t):
+
+with open(path + "args.json", "r") as outfile:
+    args = dotdict(json.load(outfile))
+args.batch_size = 8
+
+def get_result(model, diffusion, shape, model_kwargs=None):
+    data = diffusion.p_sample_loop(model, shape, clip_denoised=False, model_kwargs=model_kwargs)
+    return data.to("cpu").detach().numpy()
+
+def get_result_classifier(model, diffusion, shape, cond_fn, model_kwargs=None):
+    data = diffusion.p_sample_loop(model, shape, clip_denoised=False, cond_fn=cond_fn, model_kwargs=model_kwargs)
+    return data.to("cpu").detach().numpy()
+
+def get_x0_result_iter(model, diffusion, data, t):
     t = torch.tensor(t).to("cuda")
     data = torch.tensor(data).to("cuda").unsqueeze(0)
     noise = torch.randn_like(data)
@@ -47,26 +68,13 @@ def get_result_iter(model, diffusion, data, t):
 
     return data[0].to("cpu").detach().numpy()
 
-def get_result(model, diffusion, data, t):
-    t = torch.tensor(t).to("cuda")
-    data = torch.tensor(data).to("cuda").unsqueeze(0)
-    noise = torch.randn_like(data)
-
-    data_t = diffusion.q_sample(data, t, noise)
-    data = model(data_t, t)
-
-    return data[0].to("cpu").detach().numpy()
-
-
 def result2mesh(data):
     meshes = np.matmul(evecs.cpu().numpy(), data)
     return meshes
 
-
 def training_perform():
     train_data = get_dataset("train", args.data_dir, args.nb_freqs, args.offset, args.size_window, None)
     means_stds = train_data.means_stds
-    val = get_dataset("val", args.data_dir, args.nb_freqs, 1, args.size_window, means_stds)
 
     means_stds = [torch.tensor(ele) for ele in means_stds]
     if args.cuda:
@@ -77,19 +85,61 @@ def training_perform():
     # load checkpoints
     model.load_state_dict(
         dist_util.load_state_dict(
-            "./save/unconditioned_concat_x0/model000030000.pt", map_location=dist_util.dev()
+            path + "model000050000.pt", map_location=dist_util.dev()
         )
     )
     model.eval()
 
-    data = train_data.__getitem__(20)
-    result = get_result(model, diffusion, data, [1999])
     mean, std = train_data.means_stds
-    ori_verts = np.matmul(evecs.cpu().numpy(), data*std+mean)
-    rec_verts = np.matmul(evecs.cpu().numpy(), result*std+mean)
-    ori_meshes = [trimesh.Trimesh(mesh, smpl_faces) for mesh in ori_verts]
-    rec_meshes = [trimesh.Trimesh(mesh, smpl_faces) for mesh in rec_verts]
-    seq_imgs = seq2imgs(rec_meshes)
+
+    def render_batch(res_mesh):
+        rec_verts = np.matmul(evecs.cpu().numpy(), res_mesh*std+mean)
+        rec_meshes = []
+        for frame in range(rec_verts.shape[1]):
+            shapes = rec_verts[:,frame,:,:]
+            verts = []
+            faces = []
+            for i in np.arange(len(shapes)):
+                verts.append(shapes[i]+(i*0.6,0,0))
+                faces.append(smpl_faces+6890*i)
+            verts = np.concatenate(verts, axis=0)
+            faces = np.concatenate(faces, axis=0)
+            rec_meshes.append(trimesh.Trimesh(verts, faces))
+        seq_imgs = seq2imgs(rec_meshes, z_bias=2.2, x_bias=2.1, width=1200)
+        return seq_imgs
+
+    def render_single(res_mesh, index):
+        rec_verts = np.matmul(evecs.cpu().numpy(), res_mesh[index]*std+mean)
+        rec_meshes = [trimesh.Trimesh(mesh, smpl_faces) for mesh in rec_verts]
+        seq_imgs = seq2imgs(rec_meshes)
+        return seq_imgs
+    
+    # if use gender to condition
+    if args.return_gender:
+        gender = torch.ones(8, dtype=torch.int64).cuda()
+        result = get_result(model, diffusion, (8,90,1024,3), {"gender":gender})
+    # classifier guidance with given shape representation
+    elif args.shape_rep:
+        # x is model's output, y is target shape represenation
+        y = torch.tensor(train_data.__getitem__(50)[0]).to(next(model.parameters()).device).unsqueeze(0)
+        def cond_fn(x, t):
+            with torch.enable_grad():
+                x_in = x.detach().requires_grad_(True)
+                generated = model.shape_pre(x_in, t)
+                targets = model.shape_pre(y, 0)
+                generated = F.normalize(generated, dim=-1)
+                targets = F.normalize(targets, dim=-1)
+                logits = torch.matmul(generated,targets.T).sum()
+                return torch.autograd.grad(logits, x_in)[0] * 100
+        result = get_result_classifier(model, diffusion, (8,90,1024,3), cond_fn=cond_fn)
+        target_mesh = train_data.__getitem__(50)[0]
+        target_mesh = np.matmul(evecs.cpu().numpy(), target_mesh*std+mean)
+        target_mesh = trimesh.Trimesh(target_mesh, smpl_faces)
+    else:
+        # original generation process
+        result = get_result(model, diffusion, (8,90,1024,3))
+
+    seq_imgs = render_batch(result)
     frames = []
     fig = plt.figure()
     for i in seq_imgs:
@@ -100,3 +150,18 @@ def training_perform():
 
 if __name__ == "__main__":
     training_perform()
+
+
+
+# verts_gen = [result[1,i,:,:] for i in range(0,90,10)]
+# verts_ori = train_data.__getitem__(50)[0]
+# verts_gen = [np.matmul(evecs.cpu().numpy(), verts_gen[i]*std+mean) for i in range(9)]
+# verts_ori = np.matmul(evecs.cpu().numpy(), verts_ori*std+mean)
+# verts = [verts_ori]
+# faces = [smpl_faces]
+# for i in range(9):
+#     verts.append(verts_gen[i]+(0,0,0.6*(i+1)))
+#     faces.append(smpl_faces+6890*(i+1))
+# verts = np.concatenate(verts, axis=0)
+# faces = np.concatenate(faces, axis=0)
+# trimesh.Trimesh(verts, faces).show(smooth=False)

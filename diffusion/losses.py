@@ -7,6 +7,15 @@ https://github.com/hojonathanho/diffusion/blob/1e0dceb3b3495bbe19116a5e1b3596cd0
 
 import numpy as np
 import torch as th
+import torch.nn.functional as F
+
+def contrastive_loss(query, key):
+    query = F.normalize(query, dim=1)
+    key = F.normalize(key, dim=-1)
+    logits = query @ key.transpose(-1,-2)
+    labels = th.arange(len(query), device=query.device)
+
+    return F.cross_entropy(logits/0.2, labels, reduction='none')
 
 
 def normal_kl(mean1, logvar1, mean2, logvar2):
