@@ -17,7 +17,7 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 
 torch.backends.cudnn.enabled = False
-exp_name = "pre_aug_rerot_trans_resT1e4_x0_linear_mesh1_velo1/"
+exp_name = "pre_rerot10_trans20_resT1e4_x0_linear_mesh1_velo1/"
 path = "./save/" + exp_name
 
 with open("preProcessing/default_options_dataset.json", "r") as outfile:
@@ -116,7 +116,7 @@ def training_perform():
         return seq_imgs
     
     # original generation process 
-    result = get_result(model, diffusion, (10,90,1026,3))
+    result = get_result(model, diffusion, (args.batch_size,90,1026,3))
 
     rot = result[:,:,-2,:]
     trans = result[:,:,-1,:]
@@ -125,7 +125,7 @@ def training_perform():
 
     save_path = "render/"+exp_name
     os.makedirs(save_path, exist_ok=True)
-    for i in range(10):
+    for i in range(args.batch_size):
         rot_mat = R.from_rotvec(rot[i]).as_matrix()
         for j in range(90):
             _ = trimesh.Trimesh(np.matmul(rot_mat[j], rec_verts[i,j].T).T+trans[i,j], smpl_faces).export(save_path+"/test_"+str(i)+"_"+str(j)+".obj")
