@@ -5,6 +5,7 @@ import mmap
 import json
 import utils.welford_means_stds as w
 from typing import *
+from scipy.spatial.transform import Rotation as R
 
 from os import path
 from human_body_prior.body_model.body_model import BodyModel
@@ -129,6 +130,7 @@ def fill_dataset(seqInfos):
 
     path_dataset_file = opt["path_dataset"] + "dataset.bin"
     path_trans_file = opt["path_dataset"] + "trans.bin"
+    path_rot_file = opt["path_dataset"] + "rots.bin"
     path_lengths_file = opt["path_dataset"] + "lengths.bin"
     path_genders_file = opt["path_dataset"] + "genders.bin"
     path_actions_file = opt["path_dataset"] + "action.bin"
@@ -139,6 +141,7 @@ def fill_dataset(seqInfos):
             open(path_lengths_file, "wb") as lengths_file, \
             open(path_genders_file, "wb") as genders_file, \
             open(path_trans_file, "wb") as trans_file, \
+            open(path_rot_file, "wb") as rots_file, \
             open(path_actions_file, "wb") as actions_file:
 
         for sequence_path in seqInfos.keys():
@@ -203,11 +206,11 @@ def fill_dataset(seqInfos):
 
                 for i in range(0, len(new_npz_data["trans"][:]), max_len):
                     trans = new_npz_data["trans"][i: i + max_len, :]
-                    trans.tofile(trans_file)
+
                     body_parms = {
-                        "root_orient": torch.Tensor(
-                            new_npz_data["poses"][i: i + max_len, 0:3]
-                        ).to(opt["device"]),
+                        # "root_orient": torch.Tensor(
+                        #     new_npz_data["poses"][i: i + max_len, 0:3]
+                        # ).to(opt["device"]),
                         # "trans": torch.Tensor(
                         #     trans
                         # ).to(opt["device"]),
@@ -244,13 +247,36 @@ def fill_dataset(seqInfos):
                                 i: i + max_len, 3:66
                             ].shape[0],
                         )
+                    roots = body_pose_beta.Jtr[:,0]
 
-                    coeffs = torch.matmul(evecs, body_pose_beta.v)
+                    init_rot = True
+                    if init_rot:
+                        r1 = R.from_rotvec([0.5*np.pi,0,0]).as_matrix()
+                        r1_reverse = R.from_rotvec([-0.5*np.pi,0,0]).as_matrix()
+
+                    verts = np.stack([
+                        np.matmul(
+                            r1,
+                            (body_pose_beta.v[k]-roots[k]).cpu().numpy().T
+                        ).T
+                        for k in range(len(body_pose_beta.v))
+                    ])
+                    coeffs = torch.matmul(evecs, torch.tensor(verts).to("cuda").to(torch.float32))
 
                     welford.aggregate(coeffs.clone(), flatten=False)
 
                     coeffs.cpu().numpy().tofile(dataset_file)
-                    
+                    (trans+roots.cpu().numpy()).tofile(trans_file)
+                    np.stack([
+                        R.from_matrix
+                        (
+                            np.matmul(
+                                R.from_rotvec(mat).as_matrix(), 
+                                r1_reverse
+                            ) 
+                        ).as_rotvec()
+                        for mat in new_npz_data["poses"][i: i + max_len, 0:3]
+                    ]).tofile(rots_file)
                     length += coeffs.shape[0]
 
                 total_nb_samples += 1

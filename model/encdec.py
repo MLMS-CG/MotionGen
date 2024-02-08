@@ -40,8 +40,8 @@ class Encoder(torch.nn.Module):
                 )
             )
             self.encoder_features.append(
-                MatMulLayer(sizes_downsample[i], sizes_downsample[i + 1])
-                # torch.nn.Linear(sizes_downsample[i], sizes_downsample[i + 1])
+                # MatMulLayer(sizes_downsample[i], sizes_downsample[i + 1])
+                torch.nn.Linear(sizes_downsample[i], sizes_downsample[i + 1])
             )
             self.encoder_features.append(activation())
 
@@ -100,8 +100,8 @@ class Decoder(torch.nn.Module):
 
         for i in range(len(decoder_features) - 1):
             self.decoder_features.append(
-                MatMulLayer(sizes_upsample[i], sizes_upsample[i + 1])
-                # torch.nn.Linear(sizes_upsample[i], sizes_upsample[i + 1])
+                # MatMulLayer(sizes_upsample[i], sizes_upsample[i + 1])
+                torch.nn.Linear(sizes_upsample[i], sizes_upsample[i + 1])
             )
 
             self.decoder_features.append(
@@ -140,7 +140,7 @@ class LearnedPooling(torch.nn.Module):
 
         encoder_features = [3,32,64]
 
-        sizes_downsample = [1024,64,32]
+        sizes_downsample = [1026,64,32]
 
         self.latent_space = 256
 

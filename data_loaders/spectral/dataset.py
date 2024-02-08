@@ -2,9 +2,11 @@ from torch.utils import data
 import numpy as np
 import mmap
 import types
+from scipy.spatial.transform import Rotation as R
+import random
 
 class Spactral(data.Dataset):
-    def __init__(self, mode, datapath, nb_freqs, offset, size_window, std_mean=None, return_gender=False):
+    def __init__(self, mode, datapath, nb_freqs, offset, size_window, std_mean=None, return_gender=False, rot_aug = False):
         # load dataset
         ## load length and gender data
         with open(datapath + "lengths.bin", "r+b") as f:
@@ -22,6 +24,18 @@ class Spactral(data.Dataset):
         self.dataset = np.memmap(
             filename_dataset, dtype="float32", mode="r"
         )
+        filename_dataset = datapath + "rots.bin"
+        self.rots = np.memmap(
+            filename_dataset, dtype="float64", mode="r"
+        )
+        filename_dataset = datapath + "trans.bin"
+        self.trans = np.memmap(
+            filename_dataset, dtype="float64", mode="r"
+        )
+
+        self.rot_aug_mat = np.stack([R.from_rotvec([0,0,i*np.pi]).as_matrix() for i in np.arange(0,2,0.001)])
+        self.rot_aug = rot_aug
+
         ## build indices
         self.nb_freqs = nb_freqs
         self.offset = offset
@@ -36,7 +50,8 @@ class Spactral(data.Dataset):
             for j in range(0, current_length, self.offset):
                 if(j + self.size_window) < current_length:
                     offset = (self.sum_lengths[i] + j) * self.nb_freqs * 3
-                    self.chunkIndexStartFrame.append([i, offset])
+                    offset_rot_trans = (self.sum_lengths[i] + j) *  3
+                    self.chunkIndexStartFrame.append([i, offset, offset_rot_trans])
                     self.gender_input.append(self.genders[i])
 
         # slice the dataset
@@ -70,10 +85,22 @@ class Spactral(data.Dataset):
             self.chunkIndexStartFrame[idx][1]:\
             self.chunkIndexStartFrame[idx][1] + self.crop_len 
         ]).reshape(self.size_window, self.nb_freqs, 3)
-        if self.return_gender:
-            return (selected-self.means_stds[0])/self.means_stds[1], self.genders[idx]
+        rot = np.array(self.rots[
+            self.chunkIndexStartFrame[idx][2]:\
+            self.chunkIndexStartFrame[idx][2] + self.size_window*3
+        ]).reshape(self.size_window, 1, 3)
+        trans = np.array(self.trans[
+            self.chunkIndexStartFrame[idx][2]:\
+            self.chunkIndexStartFrame[idx][2] + self.size_window*3
+        ]).reshape(self.size_window, 1, 3)
 
-        return (selected-self.means_stds[0])/self.means_stds[1]
+        trans[:,:,:2] = trans[:,:,:2] - trans[0,:,:2]
+        if self.rot_aug:
+            aug_mat = self.rot_aug_mat[random.randint(0,1999)]
+            rot = np.stack([R.from_matrix(np.matmul(aug_mat, R.from_rotvec(rot[i]).as_matrix())).as_rotvec() for i in range(len(rot))])
+            trans = np.stack([np.matmul(aug_mat, trans[i].T).T for i in range(len(trans))])
+
+        return np.concatenate([(selected-self.means_stds[0])/self.means_stds[1], rot, trans], axis=1).astype(np.float32)
 
     def __len__(self):
         # return len

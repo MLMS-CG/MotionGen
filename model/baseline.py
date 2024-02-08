@@ -35,7 +35,7 @@ class Baseline(nn.Module):
             self.embed_gender = TimestepEmbedder(self.latent_dim, self.positional_encoding)
         
         self.encoder_features = [3,32,64]
-        self.sizes_downsample = [1024,64,32]
+        self.sizes_downsample = [1026,64,32]
         if self.shape:
             self.shape_enc = nn.Linear(self.latent_dim, self.latent_dim)
 

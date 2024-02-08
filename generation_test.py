@@ -3,21 +3,22 @@
 
 import json
 import torch
-import torch.nn.functional as F
 import numpy as np
 import mmap
 import trimesh
 from utils import dist_util
-from utils.parser_util import train_args
 from data_loaders.get_data import get_dataset
 from utils.model_util import create_unconditioned_model_and_diffusion
 from visualize.visualization import seq2imgs
+from scipy.spatial.transform import Rotation as R
+import os
 
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 
 torch.backends.cudnn.enabled = False
-path = "./save/rootdata_x0_linear_mesh1_velo1/"
+exp_name = "pre_aug_rerot_trans_resT1e4_x0_linear_mesh1_velo1/"
+path = "./save/" + exp_name
 
 with open("preProcessing/default_options_dataset.json", "r") as outfile:
     opt = json.load(outfile)
@@ -46,7 +47,7 @@ class dotdict(dict):
 
 with open(path + "args.json", "r") as outfile:
     args = dotdict(json.load(outfile))
-args.batch_size = 8
+args.batch_size = 10
 
 def get_result(model, diffusion, shape, model_kwargs=None):
     data = diffusion.p_sample_loop(model, shape, clip_denoised=False, model_kwargs=model_kwargs)
@@ -85,7 +86,7 @@ def training_perform():
     # load checkpoints
     model.load_state_dict(
         dist_util.load_state_dict(
-            path + "model000050000.pt", map_location=dist_util.dev()
+            path + "model000070000.pt", map_location=dist_util.dev()
         )
     )
     model.eval()
@@ -114,32 +115,22 @@ def training_perform():
         seq_imgs = seq2imgs(rec_meshes)
         return seq_imgs
     
-    # if use gender to condition
-    if args.return_gender:
-        gender = torch.ones(8, dtype=torch.int64).cuda()
-        result = get_result(model, diffusion, (8,90,1024,3), {"gender":gender})
-    # classifier guidance with given shape representation
-    elif args.shape_rep:
-        # x is model's output, y is target shape represenation
-        y = torch.tensor(train_data.__getitem__(50)[0]).to(next(model.parameters()).device).unsqueeze(0)
-        def cond_fn(x, t):
-            with torch.enable_grad():
-                x_in = x.detach().requires_grad_(True)
-                generated = model.shape_pre(x_in, t)
-                targets = model.shape_pre(y, 0)
-                generated = F.normalize(generated, dim=-1)
-                targets = F.normalize(targets, dim=-1)
-                logits = torch.matmul(generated,targets.T).sum()
-                return torch.autograd.grad(logits, x_in)[0] * 100
-        result = get_result_classifier(model, diffusion, (8,90,1024,3), cond_fn=cond_fn)
-        target_mesh = train_data.__getitem__(50)[0]
-        target_mesh = np.matmul(evecs.cpu().numpy(), target_mesh*std+mean)
-        target_mesh = trimesh.Trimesh(target_mesh, smpl_faces)
-    else:
-        # original generation process
-        result = get_result(model, diffusion, (8,90,1024,3))
+    # original generation process 
+    result = get_result(model, diffusion, (10,90,1026,3))
 
-    seq_imgs = render_batch(result)
+    rot = result[:,:,-2,:]
+    trans = result[:,:,-1,:]
+    res_mesh = result[:,:,:-2,:]
+    rec_verts = np.matmul(evecs.cpu().numpy(), res_mesh*std+mean)
+
+    save_path = "render/"+exp_name
+    os.makedirs(save_path, exist_ok=True)
+    for i in range(10):
+        rot_mat = R.from_rotvec(rot[i]).as_matrix()
+        for j in range(90):
+            _ = trimesh.Trimesh(np.matmul(rot_mat[j], rec_verts[i,j].T).T+trans[i,j], smpl_faces).export(save_path+"/test_"+str(i)+"_"+str(j)+".obj")
+
+    seq_imgs = render_single(result[:,:,:-2,:],0)
     frames = []
     fig = plt.figure()
     for i in seq_imgs:
