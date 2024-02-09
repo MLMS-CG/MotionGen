@@ -17,7 +17,7 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 
 torch.backends.cudnn.enabled = False
-exp_name = "pre_rerot10_trans20_resT1e4_x0_linear_mesh1_velo1/"
+exp_name = "pre_rerot10_trans20_resT1e5_x0_linear_mesh1_velo1/"
 path = "./save/" + exp_name
 
 with open("preProcessing/default_options_dataset.json", "r") as outfile:
