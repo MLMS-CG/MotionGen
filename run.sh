@@ -47,7 +47,10 @@ cd /home/kxue/Work/MotionGen/MotionGen
 # 09/08/2024
 # python train/train_baseline.py --save_dir save/pre_rerot10_trans20_resT1e5_x0_linear_mesh1_velo1 --data_dir data/datasets/dataset_MI_1024_sv_rerot_trans/ --train_platform_type ClearmlPlatform --num_steps 70_000 --lambda_res_trans 1e5 --lambda_trans 20 --lambda_rot 10
 
-python train/train_baseline.py --save_dir save/pre_rerot10_trans50_resT1e5_x0_linear_mesh1_velo1 --data_dir data/datasets/dataset_MI_1024_sv_rerot_trans/ --train_platform_type ClearmlPlatform --num_steps 80_000 --lambda_res_trans 1e5 --lambda_trans 50 --lambda_rot 10
-python train/train_baseline.py --save_dir save/pre_rerot10_trans50_resT1e4_x0_linear_mesh1_velo1 --data_dir data/datasets/dataset_MI_1024_sv_rerot_trans/ --train_platform_type ClearmlPlatform --num_steps 80_000 --lambda_res_trans 1e4 --lambda_trans 50 --lambda_rot 10
-python train/train_baseline.py --save_dir save/pre_rerot10_trans100_resT1e4_x0_linear_mesh1_velo1 --data_dir data/datasets/dataset_MI_1024_sv_rerot_trans/ --train_platform_type ClearmlPlatform --num_steps 80_000 --lambda_res_trans 1e4 --lambda_trans 100 --lambda_rot 10
-python train/train_baseline.py --save_dir save/pre_rerot20_trans50_resT1e4_x0_linear_mesh1_velo1 --data_dir data/datasets/dataset_MI_1024_sv_rerot_trans/ --train_platform_type ClearmlPlatform --num_steps 80_000 --lambda_res_trans 1e4 --lambda_trans 50 --lambda_rot 20
+# python train/train_baseline.py --save_dir save/pre_rerot10_trans50_resT1e5_x0_linear_mesh1_velo1 --data_dir data/datasets/dataset_MI_1024_sv_rerot_trans/ --train_platform_type ClearmlPlatform --num_steps 80_000 --lambda_res_trans 1e5 --lambda_trans 50 --lambda_rot 10
+# python train/train_baseline.py --save_dir save/pre_rerot10_trans50_resT1e4_x0_linear_mesh1_velo1 --data_dir data/datasets/dataset_MI_1024_sv_rerot_trans/ --train_platform_type ClearmlPlatform --num_steps 80_000 --lambda_res_trans 1e4 --lambda_trans 50 --lambda_rot 10
+# python train/train_baseline.py --save_dir save/pre_rerot10_trans100_resT1e4_x0_linear_mesh1_velo1 --data_dir data/datasets/dataset_MI_1024_sv_rerot_trans/ --train_platform_type ClearmlPlatform --num_steps 80_000 --lambda_res_trans 1e4 --lambda_trans 100 --lambda_rot 10
+# python train/train_baseline.py --save_dir save/pre_rerot20_trans50_resT1e4_x0_linear_mesh1_velo1 --data_dir data/datasets/dataset_MI_1024_sv_rerot_trans/ --train_platform_type ClearmlPlatform --num_steps 80_000 --lambda_res_trans 1e4 --lambda_trans 50 --lambda_rot 20
+
+
+python train/train_baseline.py --save_dir save/pre_rerot20_trans50_resT0_x0_linear_mesh1_velo1 --data_dir data/datasets/dataset_MI_1024_sv_rerot_trans/ --train_platform_type ClearmlPlatform --num_steps 70_000 --lambda_trans 50 --lambda_rot 10 --lambda_res_trans 0

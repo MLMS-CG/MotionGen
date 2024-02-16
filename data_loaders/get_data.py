@@ -22,10 +22,10 @@ def get_dataset_loader(mode, path, batch_size, nb_freqs, offset, size_window, me
 
     return loader, dataset.means_stds
 
-def get_dataset_classifier(batch_size):
-    dataset = ShapeSpec()
+def get_dataset_classifier(batch_size, status):
+    dataset = ShapeSpec(status)
     loader = DataLoader(
-        dataset, batch_size=batch_size, shuffle=True,
+        dataset, batch_size=batch_size, 
         num_workers=8, drop_last=True
     )
     return loader

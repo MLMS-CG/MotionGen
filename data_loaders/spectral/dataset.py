@@ -93,7 +93,8 @@ class Spactral(data.Dataset):
             self.chunkIndexStartFrame[idx][2]:\
             self.chunkIndexStartFrame[idx][2] + self.size_window*3
         ]).reshape(self.size_window, 1, 3)
-
+        # only trans in x-y space are initialized to origin point
+        # this will make the initial foot z coordinate to 0
         trans[:,:,:2] = trans[:,:,:2] - trans[0,:,:2]
         if self.rot_aug:
             aug_mat = self.rot_aug_mat[random.randint(0,1999)]

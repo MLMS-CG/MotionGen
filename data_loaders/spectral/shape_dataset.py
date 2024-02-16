@@ -1,14 +1,12 @@
 from torch.utils import data
 import numpy as np
 import mmap
-import types
 from scipy.spatial.transform import Rotation as R
-import random
 import torch
 from human_body_prior.body_model.body_model import BodyModel
 import json
 
-dataPath = "/home/kxue/Work/MotionGen/HumanML3D/"
+dataPath = "/home/kxue/Work/MotionGen/AMASS/"
 with open("preProcessing/default_options_dataset.json", "r") as outfile:
     opt = json.load(outfile)
 
@@ -39,7 +37,7 @@ bm_male = BodyModel(
     num_betas=num_betas,
     num_dmpls=num_dmpls,
     dmpl_fname=dmpl_male,
-)
+).to(opt["device"])
 
 print("sending to gpu")
 bm_male = bm_male.to(opt["device"])
@@ -54,71 +52,167 @@ bm_female = BodyModel(
     num_betas=num_betas,
     num_dmpls=num_dmpls,
     dmpl_fname=dmpl_female,
-)
+).to(opt["device"])
+
+class Sampler():
+    def __init__():
+        pass
+
+    def __iter__(self):
+        pass
 
 
 class ShapeSpec(data.Dataset):
-    def __init__(self, ):
+    def __init__(self, status):
+        beta_male = np.load("data/classifier/shape_male.npy")
+        beta_female = np.load("data/classifier/shape_female.npy")
 
-        fm_beta_mean_std = np.load("data/classifier/fm_beta_mean_std.npy")
-        self.fmean, self.fstd, self.mmean, self.mstd = fm_beta_mean_std
-        self.len_pose_female = np.load("data/classifier/len_pose_female.npy")
-        self.len_pose_male = np.load("data/classifier/len_pose_male.npy")
-        self.pose_female = np.load("data/classifier/pose_female.npy")
-        self.pose_male = np.load("data/classifier/pose_male.npy")
+        pose_hand_male = np.load("data/classifier/pose_hand_male.npy")
+        pose_body_male = np.load("data/classifier/pose_body_male.npy")
+        pose_hand_female = np.load("data/classifier/pose_hand_female.npy")
+        pose_body_female = np.load("data/classifier/pose_body_female.npy")
 
-        self.len = 1e5
+        idx = np.arange(len(pose_hand_male))
+        np.random.shuffle(idx)
+        sh_pose_hand_male = pose_hand_male[idx]
+        sh_pose_body_male = pose_body_male[idx]
+        sh_pose_hand_female = pose_hand_female[idx]
+        sh_pose_body_female = pose_body_female[idx]
 
-        self.seq_pose_male = len(self.pose_male)
-        self.seq_pose_female = len(self.pose_female)
+        if status=="train":
+            self.len = int(1000)
+        else:
+            self.len = int(100)
 
-        self.gender = torch.randint(self.len,(0,1))
-        self.seq_female = torch.randint(self.len,(0,self.seq_pose_female))
-        self.seq_male = torch.randint(self.len,(0,self.seq_pose_male))
+        self.beta_male = np.concatenate(
+            [
+                    np.random.choice(np.arange(len(beta_male)), 128, replace=False)\
+                for _ in range(int(self.len))
+            ]
+        )
+        self.beta_female = np.concatenate(
+            [
+                    np.random.choice(np.arange(len(beta_female)), 128, replace=False)\
+                for _ in range(int(self.len))
+            ]
+        )
+
+        male_data, sh_male_data = [], []
+        female_data, sh_female_data = [], []
+
+        r1 = torch.tensor(R.from_rotvec([0.5*np.pi,0,0]).as_matrix()).to(torch.float32).to("cuda")
+        for i in range(0,self.len*128,100):
+            # male
+            index = np.random.choice(np.arange(len(pose_hand_male)), 100)
+            betas = beta_male[self.beta_male[i:i+100]]
+
+            body_parms = {
+                "pose_body": torch.Tensor(
+                    pose_body_male[index]
+                ).to(opt["device"]),
+                # controls the finger articulation
+                "pose_hand": torch.Tensor(
+                    pose_hand_male[index]
+                ).to(opt["device"]),
+                # controls the body shape
+                "betas": torch.Tensor(
+                    betas
+                ).to(opt["device"]),
+            }
         
-        self.frame_female = torch.zeros_like(self.gender)
-        self.frame_male = torch.zeros_like(self.gender)
+            body_pose_beta = bm_male(**body_parms)
+            roots = body_pose_beta.Jtr[:,0].unsqueeze(1)
+            
+            vert = torch.matmul(
+                r1.unsqueeze(0),
+                (body_pose_beta.v-roots).transpose(1,2)).transpose(1,2)
+            male_data.append(torch.matmul(evecs, vert).cpu().numpy())
 
-        for i in range(self.len):
-            self.frame_female[i] = np.random.randint(self.len_pose_female[self.seq_female[i]])
-            self.frame_male[i] = np.random.randint(self.len_pose_male[self.seq_male[i]])
+            sh_body_parms = {
+                "pose_body": torch.Tensor(
+                    sh_pose_body_male[index]
+                ).to(opt["device"]),
+                # controls the finger articulation
+                "pose_hand": torch.Tensor(
+                    sh_pose_hand_male[index]
+                ).to(opt["device"]),
+                # controls the body shape
+                "betas": torch.Tensor(
+                    betas
+                ).to(opt["device"]),
+            }
+        
+            sh_body_pose_beta = bm_male(**sh_body_parms)
+            sh_roots = sh_body_pose_beta.Jtr[:,0].unsqueeze(1)
+            sh_vert = torch.matmul(
+                r1.unsqueeze(0),
+                (sh_body_pose_beta.v-sh_roots).transpose(1,2)).transpose(1,2)
+            sh_male_data.append(torch.matmul(evecs, sh_vert).cpu().numpy())
+        male_data = np.concatenate(male_data).reshape(self.len, 128, 1024,3)
+        sh_male_data = np.concatenate(sh_male_data).reshape(self.len, 128, 1024,3)
+
+        for i in range(0,self.len*128,100):
+            # female
+            index = np.random.choice(np.arange(len(pose_hand_female)), 100)
+            betas = beta_female[self.beta_female[i:i+100]]
+
+            body_parms = {
+                "pose_body": torch.Tensor(
+                    pose_body_female[index]
+                ).to(opt["device"]),
+                # controls the finger articulation
+                "pose_hand": torch.Tensor(
+                    pose_hand_female[index]
+                ).to(opt["device"]),
+                # controls the body shape
+                "betas": torch.Tensor(
+                    betas
+                ).to(opt["device"]),
+            }
+        
+            body_pose_beta = bm_female(**body_parms)
+            roots = body_pose_beta.Jtr[:,0].unsqueeze(1)
+            vert = torch.matmul(
+                r1.unsqueeze(0),
+                (body_pose_beta.v-roots).transpose(1,2)).transpose(1,2)
+            female_data.append(torch.matmul(evecs, vert).cpu().numpy())
+
+            sh_body_parms = {
+                "pose_body": torch.Tensor(
+                    sh_pose_body_female[index]
+                ).to(opt["device"]),
+                # controls the finger articulation
+                "pose_hand": torch.Tensor(
+                    sh_pose_hand_female[index]
+                ).to(opt["device"]),
+                # controls the body shape
+                "betas": torch.Tensor(
+                    betas
+                ).to(opt["device"]),
+            }
+        
+            sh_body_pose_beta = bm_female(**sh_body_parms)
+            sh_roots = sh_body_pose_beta.Jtr[:,0].unsqueeze(1)
+            sh_vert = torch.matmul(
+                r1.unsqueeze(0),
+                (sh_body_pose_beta.v-sh_roots).transpose(1,2)).transpose(1,2)
+            sh_female_data.append(torch.matmul(evecs, sh_vert).cpu().numpy())
+
+        female_data = np.concatenate(female_data).reshape(self.len, 128, 1024,3)
+        sh_female_data = np.concatenate(sh_female_data).reshape(self.len, 128, 1024,3)
+
+        self.data = np.concatenate([male_data, female_data], axis=1)
+        self.sh_data = np.concatenate([sh_male_data, sh_female_data], axis=1)
+
+        self.index = np.arange(self.len)
 
     def __getitem__(self, idx):
-        if self.gender[idx]==0:
-            # male
-            betas = torch.normal(self.mmean, self.mstd)
-            poseFile = self.seq_male[idx]
-            frame = self.frame_male[idx]
-            current_bm = bm_male
-        else:
-            # female
-            betas = torch.normal(self.fmean, self.fstd)
-            poseFile = self.seq_female[idx]
-            frame = self.frame_female[idx]
-            current_bm = bm_female
-        data = np.load(dataPath + poseFile)
-        body_parms = {
-            "pose_body": torch.Tensor(
-                data.f["poses"][frame, 3:66]
-            ).to(opt["device"]),
-            # controls the finger articulation
-            "pose_hand": torch.Tensor(
-                data.f["poses"][frame, 66:]
-            ).to(opt["device"]),
-            # controls the body shape
-            "betas": torch.Tensor(
-                betas
-            ).to(opt["device"]),
-        }
-        body_pose_beta = current_bm(**body_parms)
-        roots = body_pose_beta.Jtr[0]
-        r1 = R.from_rotvec([0.5*np.pi,0,0]).as_matrix()
-        vert = np.matmul(
-            r1,
-            (body_pose_beta.v-roots).cpu().numpy().T
-        ).T
-        return vert
+        batch = self.index[idx//256]
+        return self.data[batch, idx%256], self.sh_data[batch, idx%256]
+
+    def __after_epoch__(self):
+        np.random.shuffle(self.index)
 
     def __len__(self):
-        return self.len
+        return self.len*256
 

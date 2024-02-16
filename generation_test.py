@@ -12,12 +12,14 @@ from utils.model_util import create_unconditioned_model_and_diffusion
 from visualize.visualization import seq2imgs
 from scipy.spatial.transform import Rotation as R
 import os
+from model.classifier import Classifier
+import torch.nn.functional as F
 
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 
 torch.backends.cudnn.enabled = False
-exp_name = "pre_rerot10_trans20_resT1e5_x0_linear_mesh1_velo1/"
+exp_name = "pre_rerot10_trans50_resT1e4_x0_linear_mesh1_velo1/"
 path = "./save/" + exp_name
 
 with open("preProcessing/default_options_dataset.json", "r") as outfile:
@@ -91,6 +93,28 @@ def training_perform():
     )
     model.eval()
 
+    classifier = Classifier()
+    classifier.load_state_dict(dist_util.load_state_dict(
+        "save/classifier/model0080.pt", map_location=dist_util.dev()
+    ))
+    classifier.to("cuda")
+    classifier.eval()
+
+    y = torch.tensor(train_data.__getitem__(50)[0]).to("cuda")[:-2].unsqueeze(0).repeat(10,1,1).unsqueeze(1)
+    def cond_fn(x, t):
+        with torch.enable_grad():
+            # if t[0]>1400:
+            #     return torch.zeros_like(x).to("cuda")
+            x_in = x[:,:,:-2,:].detach().requires_grad_(True)
+            _, rep = classifier(x_in, t)
+            _, rep_ori = classifier(y, torch.zeros_like(t).to("cuda"))
+            rep = F.normalize(rep, dim=-1)
+            rep_ori = F.normalize(rep_ori, dim=-1)
+            logits = ((rep@rep_ori.transpose(-1,-2))-1).sum()
+            grad = torch.autograd.grad(logits, x_in)[0] * 10
+            return F.pad(grad,(0,0,0,2), "constant", 0)
+
+
     mean, std = train_data.means_stds
 
     def render_batch(res_mesh):
@@ -116,19 +140,19 @@ def training_perform():
         return seq_imgs
     
     # original generation process 
-    result = get_result(model, diffusion, (args.batch_size,90,1026,3))
+    result = get_result_classifier(model, diffusion, (args.batch_size,90,1026,3), cond_fn=cond_fn)
 
     rot = result[:,:,-2,:]
     trans = result[:,:,-1,:]
     res_mesh = result[:,:,:-2,:]
     rec_verts = np.matmul(evecs.cpu().numpy(), res_mesh*std+mean)
 
-    save_path = "render/"+exp_name
+    save_path = "render/shaped_"+exp_name
     os.makedirs(save_path, exist_ok=True)
     for i in range(args.batch_size):
         rot_mat = R.from_rotvec(rot[i]).as_matrix()
         for j in range(90):
-            _ = trimesh.Trimesh(np.matmul(rot_mat[j], rec_verts[i,j].T).T+trans[i,j], smpl_faces).export(save_path+"/test_"+str(i)+"_"+str(j)+".obj")
+            _ = trimesh.Trimesh(np.matmul(rot_mat[j], rec_verts[i,j].T).T+trans[i,j], smpl_faces).export(save_path+"/test_ratio10"+str(i)+"_"+str(j)+".obj")
 
     seq_imgs = render_single(result[:,:,:-2,:],0)
     frames = []
