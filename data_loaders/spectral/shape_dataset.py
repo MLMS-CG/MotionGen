@@ -101,6 +101,25 @@ class ShapeSpec(data.Dataset):
         female_data, sh_female_data = [], []
 
         r1 = torch.tensor(R.from_rotvec([0.5*np.pi,0,0]).as_matrix()).to(torch.float32).to("cuda")
+
+        self.male_tpose = bm_male(
+            betas=torch.Tensor(beta_male).to(opt["device"])
+        )
+        self.male_tpose = self.male_tpose.v - self.male_tpose.Jtr[:,0].unsqueeze(1)
+        self.male_tpose = torch.matmul(
+                r1.unsqueeze(0),
+                (self.male_tpose).transpose(1,2)).transpose(1,2)
+        self.male_tpose = torch.matmul(evecs, self.male_tpose).cpu().numpy()
+
+        self.female_tpose = bm_female(
+            betas=torch.Tensor(beta_female).to(opt["device"])
+        )
+        self.female_tpose = self.female_tpose.v - self.female_tpose.Jtr[:,0].unsqueeze(1)
+        self.female_tpose = torch.matmul(
+                r1.unsqueeze(0),
+                (self.female_tpose).transpose(1,2)).transpose(1,2)
+        self.female_tpose = torch.matmul(evecs, self.female_tpose).cpu().numpy()        
+
         for i in range(0,self.len*128,100):
             # male
             index = np.random.choice(np.arange(len(pose_hand_male)), 100)
@@ -208,7 +227,11 @@ class ShapeSpec(data.Dataset):
 
     def __getitem__(self, idx):
         batch = self.index[idx//256]
-        return self.data[batch, idx%256], self.sh_data[batch, idx%256]
+        if (idx-batch*256)//128==0:
+            tpose = self.male_tpose[self.beta_male[batch*128+(idx-batch*256)%128]]
+        else:
+            tpose = self.female_tpose[self.beta_female[batch*128+(idx-batch*256)%128]]
+        return self.data[batch, idx%256], self.sh_data[batch, idx%256], tpose
 
     def __after_epoch__(self):
         np.random.shuffle(self.index)

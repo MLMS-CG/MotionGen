@@ -64,90 +64,54 @@ def main():
 
     opt = AdamW(mp_trainer.master_params, lr=args.lr, weight_decay=args.weight_decay)
 
-    betas = np.array(gd.get_named_beta_schedule(args.noise_schedule, args.diffusion_steps, 1))
-    alphas = 1.0 - betas
-    alphas_cumprod = np.cumprod(alphas, axis=0)
-    sqrt_alphas_cumprod = np.sqrt(alphas_cumprod)
-    sqrt_one_minus_alphas_cumprod = np.sqrt(1.0 - alphas_cumprod)
-
-    def _extract_into_tensor(arr, timesteps, broadcast_shape):
-        """
-        Extract values from a 1-D numpy array for a batch of indices.
-
-        :param arr: the 1-D numpy array.
-        :param timesteps: a tensor of indices into the array to extract.
-        :param broadcast_shape: a larger shape of K dimensions with the batch
-                                dimension equal to the length of timesteps.
-        :return: a tensor of shape [batch_size, 1, ...] where the shape has K dims.
-        """
-        res = torch.from_numpy(arr).to(device=timesteps.device)[timesteps].float()
-        while len(res.shape) < len(broadcast_shape):
-            res = res[..., None]
-        return res.expand(broadcast_shape)
-
-    def q_sample(x_start, t, noise=None):
-        return (
-            _extract_into_tensor(sqrt_alphas_cumprod, t, x_start.shape) * x_start
-            + _extract_into_tensor(sqrt_one_minus_alphas_cumprod, t, x_start.shape)
-            * noise
-        )
-
     for epoch in range(100):
         train_loss, val_loss = [],[]
         train_con_loss = []
         train_rec_loss = []
         model.train()
         for batch in train_data:
-            output, target = batch
-            output = output.to("cuda").unsqueeze(1)
+            pose1, pose2, target = batch
+            pose1 = pose1.to("cuda").unsqueeze(1)
+            pose2 = pose2.to("cuda").unsqueeze(1)
             target = target.to("cuda").unsqueeze(1)
 
             mp_trainer.zero_grad()
-            output = (output.to(torch.float32).to("cuda")-coef_mean)/coef_std
-            t = sample(args.batch_size, max(epoch*20,1), "cuda")
-            noise = torch.rand_like(output).to("cuda")
-            x_t = q_sample(output, t, noise=noise)
-            recon, rep = model(x_t, t)
-
-            recon = recon.squeeze()
-            rep = rep.squeeze()
-
+            pose1 = (pose1.to(torch.float32).to("cuda")-coef_mean)/coef_std
+            pose2 = (pose2.to(torch.float32).to("cuda")-coef_mean)/coef_std
             target = (target.to(torch.float32).to("cuda")-coef_mean)/coef_std
-            t_t = q_sample(target, torch.zeros_like(t).to("cuda"), noise=noise)
-            _, rep_ori = model(t_t, torch.zeros_like(t).to("cuda"))
 
-            rep_ori = rep_ori.squeeze()
+            outp1, repp1 = model(pose1)
+            outp2, repp2 = model(pose2)
 
-            loss_rec = (((recon-x_t.squeeze())**2)*coef_std).sum((-2,-1)).mean(0)
-            loss_con = contrastive_loss(rep, rep_ori).mean()
-            loss = loss_rec + loss_con
+            loss_rec1 = (((outp1-target.squeeze())**2)*coef_std).sum((-2,-1)).mean(0)
+            loss_rec2 = (((outp2-target.squeeze())**2)*coef_std).sum((-2,-1)).mean(0)
+            loss_con = contrastive_loss(repp1.squeeze(), repp2.squeeze()).mean()
+            loss = loss_rec1 + loss_rec2 + loss_con
             train_loss.append(loss.item())
             train_con_loss.append(loss_con.item())
-            train_rec_loss.append(loss_rec.item())
+            train_rec_loss.append(loss_rec1.item()+loss_rec2.item())
             mp_trainer.backward(loss)
             mp_trainer.optimize(opt)
         
         with torch.no_grad():
             model.eval()
             for batch in val_data:
-                output, target = batch
-                output = output.to("cuda").unsqueeze(1)
+                pose1, pose2, target = batch
+                pose1 = pose1.to("cuda").unsqueeze(1)
+                pose2 = pose2.to("cuda").unsqueeze(1)
                 target = target.to("cuda").unsqueeze(1)
 
-                output = (output.to(torch.float32).to("cuda")-coef_mean)/coef_std
+                pose1 = (pose1.to(torch.float32).to("cuda")-coef_mean)/coef_std
+                pose2 = (pose2.to(torch.float32).to("cuda")-coef_mean)/coef_std
                 target = (target.to(torch.float32).to("cuda")-coef_mean)/coef_std
 
-                t = sample(args.batch_size, args.diffusion_steps, "cuda")
-                noise = torch.rand_like(output).to("cuda")
-                x_t = q_sample(output, t, noise=noise)
-                recon, rep = model(x_t, t)
-                recon = recon.squeeze()
-                rep = rep.squeeze()
-                _, rep_ori = model(target, torch.zeros_like(t).to("cuda"))
-                rep_ori = rep_ori.squeeze()
-                loss_rec = (((recon-x_t.squeeze())**2)*coef_std).sum((-2,-1)).mean(0)
-                loss_con = contrastive_loss(rep, rep_ori).mean()
-                loss = loss_rec + loss_con*10
+                outp1, repp1 = model(pose1)
+                outp2, repp2 = model(pose2)
+ 
+                loss_rec1 = (((outp1-target.squeeze())**2)*coef_std).sum((-2,-1)).mean(0)
+                loss_rec2 = (((outp2-target.squeeze())**2)*coef_std).sum((-2,-1)).mean(0)
+                loss_con = contrastive_loss(repp1.squeeze(), repp2.squeeze()).mean()
+                loss = loss_rec1 + loss_rec2 + loss_con
                 val_loss.append(loss.item())
         train_data.dataset.__after_epoch__()
         save_model(mp_trainer, opt, epoch)
@@ -169,7 +133,7 @@ def contrastive_loss(query, key):
 def save_model(mp_trainer, opt, step):
     torch.save(
         mp_trainer.master_params_to_state_dict(mp_trainer.master_params),
-        os.path.join("save/classifier/", f"model{step:04d}.pt"),
+        os.path.join("save/autoencoder/", f"model{step:04d}.pt"),
     )
     torch.save(opt.state_dict(), os.path.join("save/classifier/", f"opt{step:06d}.pt"))
 

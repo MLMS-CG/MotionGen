@@ -95,7 +95,7 @@ def training_perform():
 
     classifier = Classifier()
     classifier.load_state_dict(dist_util.load_state_dict(
-        "save/classifier/model0080.pt", map_location=dist_util.dev()
+        "save/autoencoder/model0050.pt", map_location=dist_util.dev()
     ))
     classifier.to("cuda")
     classifier.eval()

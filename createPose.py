@@ -12,7 +12,7 @@ len_pose_male = np.load("data/classifier/len_pose_male.npy")
 pose_female = np.load("data/classifier/pose_female.npy")
 pose_male = np.load("data/classifier/pose_male.npy")
 
-tl = int(5e3)
+tl = int(5e4)
 
 seq_pose_male = len(pose_male)
 seq_pose_female = len(pose_female)
