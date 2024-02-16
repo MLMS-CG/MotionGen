@@ -134,6 +134,7 @@ def fill_dataset(seqInfos):
     path_lengths_file = opt["path_dataset"] + "lengths.bin"
     path_genders_file = opt["path_dataset"] + "genders.bin"
     path_actions_file = opt["path_dataset"] + "action.bin"
+    path_tpose_file = opt["path_dataset"] + "tpose.bin"
 
     # dataset file
     with \
@@ -142,6 +143,7 @@ def fill_dataset(seqInfos):
             open(path_genders_file, "wb") as genders_file, \
             open(path_trans_file, "wb") as trans_file, \
             open(path_rot_file, "wb") as rots_file, \
+            open(path_tpose_file, "wb") as tpose_file, \
             open(path_actions_file, "wb") as actions_file:
 
         for sequence_path in seqInfos.keys():
@@ -236,7 +238,23 @@ def fill_dataset(seqInfos):
                         ).to(opt["device"]),
                     }
 
+                    body_parms_t = {
+                        # controls the body shape
+                        "betas": torch.Tensor(
+                            np.repeat(
+                                new_npz_data["betas"][:num_betas][
+                                    np.newaxis
+                                ],
+                                repeats=len(
+                                    new_npz_data["trans"][i: i + max_len]
+                                ),
+                                axis=0,
+                            )
+                        ).to(opt["device"]),
+                    }
+
                     try:
+                        body_tpose = current_bm(**body_parms_t)
                         body_pose_beta = current_bm(**body_parms)
                     except Exception as e:
                         print(e)
@@ -248,11 +266,10 @@ def fill_dataset(seqInfos):
                             ].shape[0],
                         )
                     roots = body_pose_beta.Jtr[:,0]
+                    roots_tpose = body_tpose.Jtr[:,0]
 
-                    init_rot = True
-                    if init_rot:
-                        r1 = R.from_rotvec([0.5*np.pi,0,0]).as_matrix()
-                        r1_reverse = R.from_rotvec([-0.5*np.pi,0,0]).as_matrix()
+                    r1 = R.from_rotvec([0.5*np.pi,0,0]).as_matrix()
+                    r1_reverse = R.from_rotvec([-0.5*np.pi,0,0]).as_matrix()
 
                     verts = np.stack([
                         np.matmul(
@@ -261,10 +278,18 @@ def fill_dataset(seqInfos):
                         ).T
                         for k in range(len(body_pose_beta.v))
                     ])
+
+                    verts_tpose = np.matmul(
+                            r1,
+                            (body_tpose.v[0]-roots_tpose[0]).cpu().numpy().T
+                        ).T
+                    
+                    coeffs_tpose = np.matmul(evecs.cpu().numpy(), verts_tpose)
                     coeffs = torch.matmul(evecs, torch.tensor(verts).to("cuda").to(torch.float32))
 
                     welford.aggregate(coeffs.clone(), flatten=False)
 
+                    coeffs_tpose.tofile(tpose_file)
                     coeffs.cpu().numpy().tofile(dataset_file)
                     (trans+roots.cpu().numpy()).tofile(trans_file)
                     np.stack([
