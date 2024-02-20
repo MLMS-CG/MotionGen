@@ -1,9 +1,7 @@
 from torch.utils import data
 import numpy as np
 import mmap
-import types
 from scipy.spatial.transform import Rotation as R
-import random
 
 class Spactral(data.Dataset):
     def __init__(self, mode, datapath, nb_freqs, offset, size_window, std_mean=None, return_gender=False, rot_aug = False):
@@ -32,6 +30,10 @@ class Spactral(data.Dataset):
         self.trans = np.memmap(
             filename_dataset, dtype="float64", mode="r"
         )
+        filename_dataset = datapath + "tpose.bin"
+        self.tpose = np.memmap(
+            filename_dataset, dtype="float64", mode="r"
+        ).reshape(-1,1024,3)
 
         self.rot_aug_mat = np.stack([R.from_rotvec([0,0,i*np.pi]).as_matrix() for i in np.arange(0,2,0.001)])
         self.rot_aug = rot_aug
@@ -45,6 +47,7 @@ class Spactral(data.Dataset):
 
         self.gender_input = []
         self.chunkIndexStartFrame = []
+        self.tpose_input = []
         for i in range(len(self.lengths)):
             current_length = self.lengths[i]
             for j in range(0, current_length, self.offset):
@@ -53,6 +56,7 @@ class Spactral(data.Dataset):
                     offset_rot_trans = (self.sum_lengths[i] + j) *  3
                     self.chunkIndexStartFrame.append([i, offset, offset_rot_trans])
                     self.gender_input.append(self.genders[i])
+                    self.tpose_input.append(self.tpose[i])
 
         # slice the dataset
         total_length = len(self.chunkIndexStartFrame)
@@ -67,12 +71,14 @@ class Spactral(data.Dataset):
             self.indexes = self.chunkIndexStartFrame[:train_length]
             index = self.chunkIndexStartFrame[train_length][0]-1
             self.genders = self.gender_input[:train_length]
+            self.tpose = self.tpose_input[:train_length]
             self.calStdMean(
                 self.dataset[:self.sum_lengths[index]*self.nb_freqs*3]
             )
         else:
             self.lengths = val_length
             self.genders = self.gender_input[train_length:train_length+val_length]
+            self.tpose = self.tpose_input[train_length:train_length+val_length]
             self.indexes = self.chunkIndexStartFrame[train_length:train_length+val_length]
 
     def calStdMean(self,data):
@@ -96,13 +102,9 @@ class Spactral(data.Dataset):
         # only trans in x-y space are initialized to origin point
         # this will make the initial foot z coordinate to 0
         trans[:,:,:2] = trans[:,:,:2] - trans[0,:,:2]
-        if self.rot_aug:
-            aug_mat = self.rot_aug_mat[random.randint(0,1999)]
-            rot = np.stack([R.from_matrix(np.matmul(aug_mat, R.from_rotvec(rot[i]).as_matrix())).as_rotvec() for i in range(len(rot))])
-            trans = np.stack([np.matmul(aug_mat, trans[i].T).T for i in range(len(trans))])
 
-        return np.concatenate([(selected-self.means_stds[0])/self.means_stds[1], rot, trans], axis=1).astype(np.float32)
+        return np.concatenate([(selected-self.means_stds[0])/self.means_stds[1], rot, trans], axis=1).astype(np.float32) \
+        ,((self.tpose[idx]-self.means_stds[0])/self.means_stds[1]).astype(np.float32)
 
     def __len__(self):
-        # return len
         return self.lengths

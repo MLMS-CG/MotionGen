@@ -227,10 +227,11 @@ class ShapeSpec(data.Dataset):
 
     def __getitem__(self, idx):
         batch = self.index[idx//256]
-        if (idx-batch*256)//128==0:
-            tpose = self.male_tpose[self.beta_male[batch*128+(idx-batch*256)%128]]
+        real_batch = idx//256
+        if (idx-real_batch*256)//128==0:
+            tpose = self.male_tpose[self.beta_male[batch*128+(idx-real_batch*256)%128]]
         else:
-            tpose = self.female_tpose[self.beta_female[batch*128+(idx-batch*256)%128]]
+            tpose = self.female_tpose[self.beta_female[batch*128+(idx-real_batch*256)%128]]
         return self.data[batch, idx%256], self.sh_data[batch, idx%256], tpose
 
     def __after_epoch__(self):

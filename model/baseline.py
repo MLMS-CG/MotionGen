@@ -2,7 +2,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from model.encdec import Encoder, Decoder, LearnedPooling
+from model.encdec import Decoder, LearnedPooling
+from model.classifier import Classifier
 
 
 class Baseline(nn.Module):
@@ -29,6 +30,8 @@ class Baseline(nn.Module):
         if kargs["t_emb"] =="add":
             self.t_emb = lambda a, b: a+b
 
+        self.tpose_ae = Classifier()
+
         self.positional_encoding = PositionalEncoding(self.latent_dim)
         self.embed_timestep = TimestepEmbedder(self.latent_dim, self.positional_encoding)
         if self.gender:
@@ -50,40 +53,52 @@ class Baseline(nn.Module):
             activation=self.activation
         )
 
+        decoder_layer = nn.TransformerDecoderLayer(
+            d_model=self.latent_dim,
+            nhead=self.num_heads,
+            dim_feedforward=self.ff_size,
+            dropout=self.dropout,
+            activation=self.activation
+        )
+
+        self.transformer_decoder = nn.TransformerDecoder(
+            decoder_layer=decoder_layer, num_layers=self.num_layers
+        )
+
         self.transformer_encoder = nn.TransformerEncoder(
             encoder_layer=encoder_layer, num_layers=self.num_layers
         )
         self.encoder_first_linear = nn.Linear(self.latent_dim, self.latent_dim)
         self.encoder_end_linear = nn.Linear(self.latent_dim, self.latent_dim)
 
-        
-    def shape_pre(self, x, timesteps):
-        output_static = self.enc_static(x)
-        emb = self.embed_timestep(timesteps)
-        output_cond = self.t_emb(emb, output_static) 
-        shape = self.shape_enc(output_cond)
-        return shape
-        
+        # self.decoder_first_linear = nn.Linear(self.latent_dim, self.latent_dim)
+        # self.decoder_end_linear = nn.Linear(self.latent_dim, self.latent_dim)
 
-    def forward(self, x, timesteps, gender=None):
+
+    def forward(self, x, timesteps, tpose=None):
         """
         x: [batch_size, sequence_len, nbfreq, 3], denoted x_t in the paper
         timesteps: [batch_size] (int)
         """
         
         emb = self.embed_timestep(timesteps)  # [1, bs, d]
+        # embpre = self.embed_timestep(timesteps-1)
         output_static = self.enc_static(x)
         
+        _ , beta_emb = self.tpose_ae(tpose)
+
         # timesteps embedding
-        if self.gender:
-            gender_emb = self.embed_gender(gender)
-            output_cond = self.t_emb(emb+gender_emb, output_static) 
-        else:
-            output_cond = self.t_emb(emb, output_static) 
+        output_cond = self.t_emb(emb, output_static) 
 
-        output_transformer = self.enc_transformer(output_cond)[:,-self.size_window:,:]
+        # output_cond_shape = beta_emb + output_cond
 
-        output = self.dec_static(output_transformer)
+        output_transformer = self.enc_transformer(beta_emb + output_cond)[:,-self.size_window:,:]
+
+        # res
+        output = self.dec_static(output_transformer+output_cond[:,-self.size_window:,:])
+
+        # nores
+        # output = self.dec_static(output_transformer)
 
         return output
     
@@ -118,6 +133,17 @@ class Baseline(nn.Module):
 
         return x
     
+    def dec_transformer(self, y, fenc):
+        # y = self.decoder_first_linear(y)
+        y = y.permute(1,0,2)
+        fenc = fenc.permute(1,0,2)
+        y = self.positional_encoding(y)
+        y = self.transformer_decoder(y, fenc)
+        y = y.permute(1, 0, 2)
+        # y = self.encoder_end_linear(y)
+        return y
+
+
     def enc_transformer(self, x):
 
         x = self.encoder_first_linear(x)

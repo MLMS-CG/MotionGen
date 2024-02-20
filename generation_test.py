@@ -19,7 +19,7 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 
 torch.backends.cudnn.enabled = False
-exp_name = "pre_rerot10_trans50_resT1e4_x0_linear_mesh1_velo1/"
+exp_name = "shape_rerot10_trans50_resT1e4_x0_linear_mesh1_velo1/"
 path = "./save/" + exp_name
 
 with open("preProcessing/default_options_dataset.json", "r") as outfile:
@@ -78,6 +78,8 @@ def result2mesh(data):
 def training_perform():
     train_data = get_dataset("train", args.data_dir, args.nb_freqs, args.offset, args.size_window, None)
     means_stds = train_data.means_stds
+    val_data = get_dataset(
+        "val",  args.data_dir, args.nb_freqs, args.offset, args.size_window, means_stds)
 
     means_stds = [torch.tensor(ele) for ele in means_stds]
     if args.cuda:
@@ -93,27 +95,30 @@ def training_perform():
     )
     model.eval()
 
-    classifier = Classifier()
-    classifier.load_state_dict(dist_util.load_state_dict(
-        "save/autoencoder/model0050.pt", map_location=dist_util.dev()
-    ))
-    classifier.to("cuda")
-    classifier.eval()
+    # classifier = Classifier()
+    # classifier.load_state_dict(dist_util.load_state_dict(
+    #     "save/autoencoder/model0099.pt", map_location=dist_util.dev()
+    # ))
+    # classifier.to("cuda")
+    # classifier.eval()
 
-    y = torch.tensor(train_data.__getitem__(50)[0]).to("cuda")[:-2].unsqueeze(0).repeat(10,1,1).unsqueeze(1)
-    def cond_fn(x, t):
-        with torch.enable_grad():
-            # if t[0]>1400:
-            #     return torch.zeros_like(x).to("cuda")
-            x_in = x[:,:,:-2,:].detach().requires_grad_(True)
-            _, rep = classifier(x_in, t)
-            _, rep_ori = classifier(y, torch.zeros_like(t).to("cuda"))
-            rep = F.normalize(rep, dim=-1)
-            rep_ori = F.normalize(rep_ori, dim=-1)
-            logits = ((rep@rep_ori.transpose(-1,-2))-1).sum()
-            grad = torch.autograd.grad(logits, x_in)[0] * 10
-            return F.pad(grad,(0,0,0,2), "constant", 0)
+    # y = torch.tensor(train_data.__getitem__(50)[0]).to("cuda")[:-2].unsqueeze(0).repeat(10,1,1).unsqueeze(1)
+    # def cond_fn(x, t):
+    #     with torch.enable_grad():
+    #         # if t[0]>1400:
+    #         #     return torch.zeros_like(x).to("cuda")
+    #         x_in = x[:,:,:-2,:].detach().requires_grad_(True)
+    #         _, rep = classifier(x_in, t)
+    #         _, rep_ori = classifier(y, torch.zeros_like(t).to("cuda"))
+    #         rep = F.normalize(rep, dim=-1)
+    #         rep_ori = F.normalize(rep_ori, dim=-1)
+    #         logits = ((rep@rep_ori.transpose(-1,-2))-1).sum()
+    #         grad = torch.autograd.grad(logits, x_in)[0] * 10
+    #         return F.pad(grad,(0,0,0,2), "constant", 0)
 
+    target = torch.tensor(train_data.__getitem__(50)[1]).to("cuda")
+    target = target[(None,)*2].repeat(args.batch_size,1,1,1)
+    cond = {"tpose":target}
 
     mean, std = train_data.means_stds
 
@@ -140,7 +145,7 @@ def training_perform():
         return seq_imgs
     
     # original generation process 
-    result = get_result_classifier(model, diffusion, (args.batch_size,90,1026,3), cond_fn=cond_fn)
+    result = get_result(model, diffusion, (args.batch_size,90,1026,3), model_kwargs=cond)
 
     rot = result[:,:,-2,:]
     trans = result[:,:,-1,:]

@@ -14,6 +14,14 @@ from torch.optim import AdamW
 import numpy as np
 from diffusion import gaussian_diffusion as gd
 import torch.nn.functional as F
+import mmap
+
+with open("data/evecs_4096.bin", "r+b") as f:
+    mm = mmap.mmap(f.fileno(), 0)
+    evecs = torch.tensor(np.frombuffer(
+        mm[:], dtype=np.float32)).view(6890, 4096).to("cuda")
+    
+evecs = evecs[:, :1024]
 
 def sample(batch_size, time_step, device):
     """
@@ -68,6 +76,7 @@ def main():
         train_loss, val_loss = [],[]
         train_con_loss = []
         train_rec_loss = []
+        train_mesh_loss = []
         model.train()
         for batch in train_data:
             pose1, pose2, target = batch
@@ -78,18 +87,32 @@ def main():
             mp_trainer.zero_grad()
             pose1 = (pose1.to(torch.float32).to("cuda")-coef_mean)/coef_std
             pose2 = (pose2.to(torch.float32).to("cuda")-coef_mean)/coef_std
-            target = (target.to(torch.float32).to("cuda")-coef_mean)/coef_std
+            # target_mesh = torch.matmul(evecs,target.to(torch.float32).to("cuda"))
+            target_coef = (target.to(torch.float32).to("cuda")-coef_mean)/coef_std
 
             outp1, repp1 = model(pose1)
             outp2, repp2 = model(pose2)
+            outp3, repp3 = model(target_coef)
 
-            loss_rec1 = (((outp1-target.squeeze())**2)*coef_std).sum((-2,-1)).mean(0)
-            loss_rec2 = (((outp2-target.squeeze())**2)*coef_std).sum((-2,-1)).mean(0)
-            loss_con = contrastive_loss(repp1.squeeze(), repp2.squeeze()).mean()
-            loss = loss_rec1 + loss_rec2 + loss_con
+            # meshp1 = torch.matmul(evecs, outp1*coef_std+coef_mean)
+            # meshp2 = torch.matmul(evecs, outp2*coef_std+coef_mean)
+
+            loss_rec1 = (((outp1-target_coef.squeeze())**2)*coef_std).sum((-2,-1)).mean(0)
+            loss_rec2 = (((outp2-target_coef.squeeze())**2)*coef_std).sum((-2,-1)).mean(0)
+            loss_rec3 = (((outp3-target_coef.squeeze())**2)*coef_std).sum((-2,-1)).mean(0)
+
+            # loss_mesh1 = ((meshp1-target_mesh.squeeze())**2).sum((-2,-1)).mean(0)
+            # loss_mesh2 = ((meshp2-target_mesh.squeeze())**2).sum((-2,-1)).mean(0)
+
+            loss_con1 = contrastive_loss(repp1.squeeze(), repp2.squeeze()).mean()
+            loss_con2 = contrastive_loss(repp3.squeeze(), repp2.squeeze()).mean()
+            loss_con3 = contrastive_loss(repp3.squeeze(), repp1.squeeze()).mean()
+            loss = loss_rec1 + loss_rec2 + loss_rec3 \
+                + loss_con1 + loss_con2 + loss_con3
+            # train_mesh_loss.append(loss_mesh1.item()+loss_mesh2.item())
             train_loss.append(loss.item())
-            train_con_loss.append(loss_con.item())
-            train_rec_loss.append(loss_rec1.item()+loss_rec2.item())
+            train_con_loss.append(loss_con1.item()+loss_con2.item()+loss_con3.item())
+            train_rec_loss.append(loss_rec1.item()+loss_rec2.item()+loss_rec3.item())
             mp_trainer.backward(loss)
             mp_trainer.optimize(opt)
         
@@ -101,17 +124,30 @@ def main():
                 pose2 = pose2.to("cuda").unsqueeze(1)
                 target = target.to("cuda").unsqueeze(1)
 
+                mp_trainer.zero_grad()
                 pose1 = (pose1.to(torch.float32).to("cuda")-coef_mean)/coef_std
                 pose2 = (pose2.to(torch.float32).to("cuda")-coef_mean)/coef_std
-                target = (target.to(torch.float32).to("cuda")-coef_mean)/coef_std
+                target_coef = (target.to(torch.float32).to("cuda")-coef_mean)/coef_std
 
                 outp1, repp1 = model(pose1)
                 outp2, repp2 = model(pose2)
- 
-                loss_rec1 = (((outp1-target.squeeze())**2)*coef_std).sum((-2,-1)).mean(0)
-                loss_rec2 = (((outp2-target.squeeze())**2)*coef_std).sum((-2,-1)).mean(0)
-                loss_con = contrastive_loss(repp1.squeeze(), repp2.squeeze()).mean()
-                loss = loss_rec1 + loss_rec2 + loss_con
+                outp3, repp3 = model(target_coef)
+
+                # meshp1 = torch.matmul(evecs, outp1*coef_std+coef_mean)
+                # meshp2 = torch.matmul(evecs, outp2*coef_std+coef_mean)
+
+                loss_rec1 = (((outp1-target_coef.squeeze())**2)*coef_std).sum((-2,-1)).mean(0)
+                loss_rec2 = (((outp2-target_coef.squeeze())**2)*coef_std).sum((-2,-1)).mean(0)
+                loss_rec3 = (((outp3-target_coef.squeeze())**2)*coef_std).sum((-2,-1)).mean(0)
+
+                # loss_mesh1 = ((meshp1-target_mesh.squeeze())**2).sum((-2,-1)).mean(0)
+                # loss_mesh2 = ((meshp2-target_mesh.squeeze())**2).sum((-2,-1)).mean(0)
+
+                loss_con1 = contrastive_loss(repp1.squeeze(), repp2.squeeze()).mean()
+                loss_con2 = contrastive_loss(repp3.squeeze(), repp2.squeeze()).mean()
+                loss_con3 = contrastive_loss(repp3.squeeze(), repp1.squeeze()).mean()
+                loss = loss_rec1 + loss_rec2 + loss_rec3 \
+                    + loss_con1 + loss_con2 + loss_con3
                 val_loss.append(loss.item())
         train_data.dataset.__after_epoch__()
         save_model(mp_trainer, opt, epoch)

@@ -152,8 +152,8 @@ class TrainLoop:
             cond = None
             if isinstance(motion, list):
                 motion = [item.to(self.device) for item in motion]
-                motion, gender = motion
-                cond = {"gender":gender}
+                motion, tpose = motion
+                cond = {"tpose":tpose.unsqueeze(1)}
             else:
                 motion = motion.to(self.device)
 
@@ -184,8 +184,8 @@ class TrainLoop:
 
         cond = None
         if isinstance(batch, list):
-            batch, gender = batch
-            cond = {"gender":gender}
+            batch, tpose = batch
+            cond = {"tpose":tpose.unsqueeze(1)}
 
         t, weights = self.schedule_sampler.sample(batch.shape[0], dist_util.dev())
 

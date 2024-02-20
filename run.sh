@@ -53,4 +53,11 @@ cd /home/kxue/Work/MotionGen/MotionGen
 # python train/train_baseline.py --save_dir save/pre_rerot20_trans50_resT1e4_x0_linear_mesh1_velo1 --data_dir data/datasets/dataset_MI_1024_sv_rerot_trans/ --train_platform_type ClearmlPlatform --num_steps 80_000 --lambda_res_trans 1e4 --lambda_trans 50 --lambda_rot 20
 
 
-python train/train_baseline.py --save_dir save/pre_rerot20_trans50_resT0_x0_linear_mesh1_velo1 --data_dir data/datasets/dataset_MI_1024_sv_rerot_trans/ --train_platform_type ClearmlPlatform --num_steps 70_000 --lambda_trans 50 --lambda_rot 10 --lambda_res_trans 0
+# python train/train_baseline.py --save_dir save/pre_rerot20_trans50_resT0_x0_linear_mesh1_velo1 --data_dir data/datasets/dataset_MI_1024_sv_rerot_trans/ --train_platform_type ClearmlPlatform --num_steps 70_000 --lambda_trans 50 --lambda_rot 10 --lambda_res_trans 0
+
+# 16/02/2024
+# python train/train_baseline.py --save_dir save/shape_rerot10_trans50_resT1e4_x0_linear_mesh1_velo1 --data_dir data/datasets/dataset_MI_1024_sv_rerot_trans/ --train_platform_type ClearmlPlatform --num_steps 70_000 --lambda_trans 50 --lambda_rot 10 --lambda_res_trans 1e4
+
+# 19/02/2024
+# comment baseline.py line83 to desable the residual archi in model
+python train/train_baseline.py --save_dir save/shape_ft_nores_rerot10_trans50_resT1e4_x0_linear_mesh1_velo1 --data_dir data/datasets/dataset_MI_1024_sv_rerot_trans/ --train_platform_type ClearmlPlatform --num_steps 70_000 --lambda_trans 50 --lambda_rot 10 --lambda_res_trans 1e4 --batch_size 40

@@ -45,6 +45,10 @@ def main():
 
     print("creating model and diffusion...")
     model, diffusion = create_unconditioned_model_and_diffusion(args, means_stds)
+    model.tpose_ae.load_state_dict(dist_util.load_state_dict(
+        "save/autoencoder/model0099.pt", map_location=dist_util.dev()
+    ))
+    # model.tpose_ae.requires_grad_(False)
     if args.cuda:
         model.to("cuda")
 
