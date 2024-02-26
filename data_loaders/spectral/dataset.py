@@ -47,7 +47,6 @@ class Spactral(data.Dataset):
 
         self.gender_input = []
         self.chunkIndexStartFrame = []
-        self.tpose_input = []
         for i in range(len(self.lengths)):
             current_length = self.lengths[i]
             for j in range(0, current_length, self.offset):
@@ -56,7 +55,6 @@ class Spactral(data.Dataset):
                     offset_rot_trans = (self.sum_lengths[i] + j) *  3
                     self.chunkIndexStartFrame.append([i, offset, offset_rot_trans])
                     self.gender_input.append(self.genders[i])
-                    self.tpose_input.append(self.tpose[i])
 
         # slice the dataset
         total_length = len(self.chunkIndexStartFrame)
@@ -71,14 +69,12 @@ class Spactral(data.Dataset):
             self.indexes = self.chunkIndexStartFrame[:train_length]
             index = self.chunkIndexStartFrame[train_length][0]-1
             self.genders = self.gender_input[:train_length]
-            self.tpose = self.tpose_input[:train_length]
             self.calStdMean(
                 self.dataset[:self.sum_lengths[index]*self.nb_freqs*3]
             )
         else:
             self.lengths = val_length
             self.genders = self.gender_input[train_length:train_length+val_length]
-            self.tpose = self.tpose_input[train_length:train_length+val_length]
             self.indexes = self.chunkIndexStartFrame[train_length:train_length+val_length]
 
     def calStdMean(self,data):
@@ -88,23 +84,23 @@ class Spactral(data.Dataset):
     def __getitem__(self, idx):
         # get coefs for training
         selected = np.array(self.dataset[
-            self.chunkIndexStartFrame[idx][1]:\
-            self.chunkIndexStartFrame[idx][1] + self.crop_len 
+            self.indexes[idx][1]:\
+            self.indexes[idx][1] + self.crop_len 
         ]).reshape(self.size_window, self.nb_freqs, 3)
         rot = np.array(self.rots[
-            self.chunkIndexStartFrame[idx][2]:\
-            self.chunkIndexStartFrame[idx][2] + self.size_window*3
+            self.indexes[idx][2]:\
+            self.indexes[idx][2] + self.size_window*3
         ]).reshape(self.size_window, 1, 3)
         trans = np.array(self.trans[
-            self.chunkIndexStartFrame[idx][2]:\
-            self.chunkIndexStartFrame[idx][2] + self.size_window*3
+            self.indexes[idx][2]:\
+            self.indexes[idx][2] + self.size_window*3
         ]).reshape(self.size_window, 1, 3)
         # only trans in x-y space are initialized to origin point
         # this will make the initial foot z coordinate to 0
         trans[:,:,:2] = trans[:,:,:2] - trans[0,:,:2]
 
         return np.concatenate([(selected-self.means_stds[0])/self.means_stds[1], rot, trans], axis=1).astype(np.float32) \
-        ,((self.tpose[idx]-self.means_stds[0])/self.means_stds[1]).astype(np.float32)
+        ,((self.tpose[self.indexes[idx][0]]-self.means_stds[0])/self.means_stds[1]).astype(np.float32)
 
     def __len__(self):
         return self.lengths

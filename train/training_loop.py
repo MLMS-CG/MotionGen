@@ -130,6 +130,7 @@ class TrainLoop:
                     self.model.eval()
                     self.evaluate()
                     self.model.train()
+                    self.model.tpose_ae.eval()
 
                     # Run for a finite amount of time in integration tests.
                     if os.environ.get("DIFFUSION_TRAINING_TEST", "") and self.step > 0:

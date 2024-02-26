@@ -32,6 +32,8 @@ class Baseline(nn.Module):
 
         self.tpose_ae = Classifier()
 
+        self.cond_mask_prob = 0.2
+
         self.positional_encoding = PositionalEncoding(self.latent_dim)
         self.embed_timestep = TimestepEmbedder(self.latent_dim, self.positional_encoding)
         if self.gender:
@@ -71,34 +73,52 @@ class Baseline(nn.Module):
         self.encoder_first_linear = nn.Linear(self.latent_dim, self.latent_dim)
         self.encoder_end_linear = nn.Linear(self.latent_dim, self.latent_dim)
 
-        # self.decoder_first_linear = nn.Linear(self.latent_dim, self.latent_dim)
-        # self.decoder_end_linear = nn.Linear(self.latent_dim, self.latent_dim)
+        self.decoder_first_linear = nn.Linear(self.latent_dim, self.latent_dim)
+        self.decoder_end_linear = nn.Linear(self.latent_dim, self.latent_dim)
 
+        self.mlp_gamma = nn.Linear(self.latent_dim, self.latent_dim)
+        self.mlp_beta = nn.Linear(self.latent_dim, self.latent_dim)
 
-    def forward(self, x, timesteps, tpose=None):
+    def mask_cond(self, cond, uncond=False):
+        bs = cond.shape[0]
+        if uncond:
+            return torch.zeros_like(cond)
+        elif self.training and self.cond_mask_prob>0:
+            mask = torch.bernoulli(torch.ones(bs, device=cond.device) * self.cond_mask_prob).view(bs, 1, 1)  # 1-> use null_cond, 0-> use real cond
+            return cond*(1.-mask)
+        else:
+            return cond
+
+    def stylization(self, x, emb):
+        x = x*self.mlp_gamma(emb) + self.mlp_beta(emb)
+        return x
+
+    def forward(self, x, timesteps, tpose=None, uncond=False):
         """
         x: [batch_size, sequence_len, nbfreq, 3], denoted x_t in the paper
         timesteps: [batch_size] (int)
         """
-        
         emb = self.embed_timestep(timesteps)  # [1, bs, d]
         # embpre = self.embed_timestep(timesteps-1)
         output_static = self.enc_static(x)
         
         _ , beta_emb = self.tpose_ae(tpose)
 
+        beta_emb = self.mask_cond(beta_emb, uncond)
+
         # timesteps embedding
         output_cond = self.t_emb(emb, output_static) 
 
         # output_cond_shape = beta_emb + output_cond
 
-        output_transformer = self.enc_transformer(beta_emb + output_cond)[:,-self.size_window:,:]
+        output_transformer = self.dec_transformer(self.stylization(output_cond, beta_emb), output_cond)[:,-self.size_window:,:]
+        # output_transformer = self.enc_transformer(beta_emb + output_cond)[:,-self.size_window:,:]
 
         # res
-        output = self.dec_static(output_transformer+output_cond[:,-self.size_window:,:])
+        # output = self.dec_static(output_transformer+output_cond[:,-self.size_window:,:])
 
         # nores
-        # output = self.dec_static(output_transformer)
+        output = self.dec_static(output_transformer)
 
         return output
     
@@ -108,7 +128,7 @@ class Baseline(nn.Module):
     def enc_static(self, x):
         resize = False
 
-        if x.dim() == 4:
+        if 4 == x.dim():
             resize = True
             x = torch.flatten(x, 0, 1)
 
@@ -122,7 +142,7 @@ class Baseline(nn.Module):
     def dec_static(self, x):
         resize = False
 
-        if x.dim() == 3:
+        if 3 == x.dim():
             resize = True
             x = torch.flatten(x, 0, 1)
 
@@ -134,13 +154,13 @@ class Baseline(nn.Module):
         return x
     
     def dec_transformer(self, y, fenc):
-        # y = self.decoder_first_linear(y)
+        y = self.decoder_first_linear(y)
         y = y.permute(1,0,2)
         fenc = fenc.permute(1,0,2)
         y = self.positional_encoding(y)
         y = self.transformer_decoder(y, fenc)
         y = y.permute(1, 0, 2)
-        # y = self.encoder_end_linear(y)
+        y = self.encoder_end_linear(y)
         return y
 
 

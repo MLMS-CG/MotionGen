@@ -12,14 +12,14 @@ from utils.model_util import create_unconditioned_model_and_diffusion
 from visualize.visualization import seq2imgs
 from scipy.spatial.transform import Rotation as R
 import os
-from model.classifier import Classifier
+from model.cfg_sampler import ClassifierFreeSampleModel
 import torch.nn.functional as F
 
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 
 torch.backends.cudnn.enabled = False
-exp_name = "shape_rerot10_trans50_resT1e4_x0_linear_mesh1_velo1/"
+exp_name = "shapecosine_rerot10_trans50_resT1e4_x0_linear_mesh1_velo1/"
 path = "./save/" + exp_name
 
 with open("preProcessing/default_options_dataset.json", "r") as outfile:
@@ -49,7 +49,8 @@ class dotdict(dict):
 
 with open(path + "args.json", "r") as outfile:
     args = dotdict(json.load(outfile))
-args.batch_size = 10
+args.batch_size = 8
+scaler = 2
 
 def get_result(model, diffusion, shape, model_kwargs=None):
     data = diffusion.p_sample_loop(model, shape, clip_denoised=False, model_kwargs=model_kwargs)
@@ -85,10 +86,12 @@ def training_perform():
     if args.cuda:
         means_stds = [ele.to("cuda") for ele in means_stds]
     model, diffusion = create_unconditioned_model_and_diffusion(args, means_stds)
+    model = ClassifierFreeSampleModel(model, scaler)
+
     if args.cuda:
         model.to("cuda")
     # load checkpoints
-    model.load_state_dict(
+    model.model.load_state_dict(
         dist_util.load_state_dict(
             path + "model000070000.pt", map_location=dist_util.dev()
         )
@@ -157,7 +160,7 @@ def training_perform():
     for i in range(args.batch_size):
         rot_mat = R.from_rotvec(rot[i]).as_matrix()
         for j in range(90):
-            _ = trimesh.Trimesh(np.matmul(rot_mat[j], rec_verts[i,j].T).T+trans[i,j], smpl_faces).export(save_path+"/test_ratio10"+str(i)+"_"+str(j)+".obj")
+            _ = trimesh.Trimesh(np.matmul(rot_mat[j], rec_verts[i,j].T).T+trans[i,j], smpl_faces).export(save_path+"/test_"+str(scaler)+"_"+str(i)+"_"+str(j)+".obj")
 
     seq_imgs = render_single(result[:,:,:-2,:],0)
     frames = []

@@ -60,4 +60,8 @@ cd /home/kxue/Work/MotionGen/MotionGen
 
 # 19/02/2024
 # comment baseline.py line83 to desable the residual archi in model
-python train/train_baseline.py --save_dir save/shape_ft_nores_rerot10_trans50_resT1e4_x0_linear_mesh1_velo1 --data_dir data/datasets/dataset_MI_1024_sv_rerot_trans/ --train_platform_type ClearmlPlatform --num_steps 70_000 --lambda_trans 50 --lambda_rot 10 --lambda_res_trans 1e4 --batch_size 40
+# python train/train_baseline.py --save_dir save/shape_rerot10_trans50_resT1e4_x0_linear_mesh1_velo1 --data_dir data/datasets/dataset_MI_1024_sv_rerot_trans/ --train_platform_type ClearmlPlatform --num_steps 70_000 --lambda_trans 50 --lambda_rot 10 --lambda_res_trans 1e4 --batch_size 48
+# python train/train_baseline.py --save_dir save/shape_rand_rerot10_trans50_resT1e4_x0_linear_mesh1_velo1 --data_dir data/datasets/dataset_MI_1024_sv_rerot_trans/ --train_platform_type ClearmlPlatform --num_steps 70_000 --lambda_trans 100 --lambda_rot 10 --lambda_res_trans 100
+python train/train_baseline.py --save_dir save/shape1000_rerot10_trans50_resT1e4_x0_linear_mesh1_velo1 --data_dir data/datasets/dataset_MI_1024_sv_rerot_trans/ --train_platform_type ClearmlPlatform --num_steps 70_000 --lambda_trans 50 --lambda_rot 10 --lambda_res_trans 1e4 --diffusion_steps 1000
+python train/train_baseline.py --save_dir save/shapecosine_rerot10_trans50_resT1e4_x0_linear_mesh1_velo1 --data_dir data/datasets/dataset_MI_1024_sv_rerot_trans/ --train_platform_type ClearmlPlatform --num_steps 70_000 --lambda_trans 50 --lambda_rot 10 --lambda_res_trans 1e4 --noise_schedule cosine
+python train/train_baseline.py --save_dir save/shape1000cosine_rerot10_trans50_resT1e4_x0_linear_mesh1_velo1 --data_dir data/datasets/dataset_MI_1024_sv_rerot_trans/ --train_platform_type ClearmlPlatform --num_steps 70_000 --lambda_trans 50 --lambda_rot 10 --lambda_res_trans 1e4 --diffusion_steps 1000 --noise_schedule cosine
