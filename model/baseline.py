@@ -109,11 +109,15 @@ class Baseline(nn.Module):
         # timesteps embedding
         output_cond = self.t_emb(emb, output_static) 
 
-        # output_cond_shape = beta_emb + output_cond
 
-        output_transformer = self.dec_transformer(self.stylization(output_cond, beta_emb), output_cond)[:,-self.size_window:,:]
+        # 23-26 févr
+        # output_transformer = self.dec_transformer(self.stylization(output_cond, beta_emb), output_cond)[:,-self.size_window:,:]
+        
+        # 28 févr plus
         # output_transformer = self.enc_transformer(beta_emb + output_cond)[:,-self.size_window:,:]
 
+        # 28 févr sty
+        output_transformer = self.enc_transformer(self.stylization(output_cond, beta_emb))[:,-self.size_window:,:]
         # res
         # output = self.dec_static(output_transformer+output_cond[:,-self.size_window:,:])
 
