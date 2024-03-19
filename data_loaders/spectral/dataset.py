@@ -10,14 +10,12 @@ class Spactral(data.Dataset):
         with open(datapath + "lengths.bin", "r+b") as f:
             mm = mmap.mmap(f.fileno(), 0)
             self.lengths = np.frombuffer(mm, dtype=int)
-        with open(datapath + "genders.bin", "r+b") as f:
-            mm = mmap.mmap(f.fileno(), 0)
-            self.genders = np.frombuffer(mm, dtype=int)
         self.means_stds = std_mean
         self.sum_lengths = np.array(
             [np.sum(self.lengths[:i]) for i in range(len(self.lengths))]
         )
         ## load coefs data
+        self.actions = np.load(datapath + "action.npy")
         filename_dataset = datapath + "dataset.bin"
         self.dataset = np.memmap(
             filename_dataset, dtype="float32", mode="r"
@@ -43,9 +41,8 @@ class Spactral(data.Dataset):
         self.offset = offset
         self.size_window = size_window
         self.crop_len = self.size_window * self.nb_freqs * 3
-        self.return_gender = return_gender
 
-        self.gender_input = []
+        self.action_input = []
         self.chunkIndexStartFrame = []
         for i in range(len(self.lengths)):
             current_length = self.lengths[i]
@@ -54,7 +51,7 @@ class Spactral(data.Dataset):
                     offset = (self.sum_lengths[i] + j) * self.nb_freqs * 3
                     offset_rot_trans = (self.sum_lengths[i] + j) *  3
                     self.chunkIndexStartFrame.append([i, offset, offset_rot_trans])
-                    self.gender_input.append(self.genders[i])
+                    self.action_input.append(self.actions[i])
 
         # slice the dataset
         total_length = len(self.chunkIndexStartFrame)
@@ -68,14 +65,28 @@ class Spactral(data.Dataset):
             self.lengths = train_length
             self.indexes = self.chunkIndexStartFrame[:train_length]
             index = self.chunkIndexStartFrame[train_length][0]-1
-            self.genders = self.gender_input[:train_length]
+            self.actions = self.action_input[:train_length]
             self.calStdMean(
                 self.dataset[:self.sum_lengths[index]*self.nb_freqs*3]
             )
         else:
             self.lengths = val_length
-            self.genders = self.gender_input[train_length:train_length+val_length]
+            self.actions = self.action_input[train_length:train_length+val_length]
             self.indexes = self.chunkIndexStartFrame[train_length:train_length+val_length]
+
+    def mirrow_rotation(matrix):
+        theta_z = np.arctan2(matrix[1,0], matrix[0,0])
+        theta_y = np.arctan2(-matrix[2,0], np.sqrt(matrix[2,1]**2+matrix[2,2]**2))
+        cosz, sinz = np.cos(-theta_z), np.sin(-theta_z)
+        cosy, siny = np.cos(-2*theta_y), np.sin(-2*theta_y)
+
+        m_matrixz = [[cosz, -sinz, 0], [sinz, cosz, 0], [0,0,1]]
+        m_matrixy = [[cosy, 0, siny], [0, 1, 0], [-siny, 0, cosy]]
+        matrix = np.matmul(m_matrixz, matrix)
+        matrix = np.matmul(m_matrixy, matrix)
+        matrix = np.matmul(m_matrixz, matrix)
+        return matrix
+
 
     def calStdMean(self,data):
         data = np.array(data.reshape(-1, self.nb_freqs, 3))
@@ -100,7 +111,14 @@ class Spactral(data.Dataset):
         trans[:,:,:2] = trans[:,:,:2] - trans[0,:,:2]
 
         return np.concatenate([(selected-self.means_stds[0])/self.means_stds[1], rot, trans], axis=1).astype(np.float32) \
-        ,((self.tpose[self.indexes[idx][0]]-self.means_stds[0])/self.means_stds[1]).astype(np.float32)
+        ,((self.tpose[self.indexes[idx][0]]-self.means_stds[0])/self.means_stds[1]).astype(np.float32), a2l[self.actions[idx]]
 
     def __len__(self):
         return self.lengths
+    
+a2l = {
+    "walk": 0,
+    "arm movements": 1,
+    "jump": 2,
+    "run": 3,
+}

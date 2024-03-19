@@ -79,21 +79,22 @@ class Baseline(nn.Module):
         self.mlp_gamma = nn.Linear(self.latent_dim, self.latent_dim)
         self.mlp_beta = nn.Linear(self.latent_dim, self.latent_dim)
 
+        self.embed_action = EmbedAction(4, self.latent_dim)
+
     def mask_cond(self, cond, uncond=False):
         bs = cond.shape[0]
-        if uncond:
-            return torch.zeros_like(cond)
-        elif self.training and self.cond_mask_prob>0:
-            mask = torch.bernoulli(torch.ones(bs, device=cond.device) * self.cond_mask_prob).view(bs, 1, 1)  # 1-> use null_cond, 0-> use real cond
-            return cond*(1.-mask)
-        else:
-            return cond
+        uncond = uncond[(...,)+(None,)*(cond.dim()-1)]
+        if self.training and self.cond_mask_prob>0:
+            mask = torch.bernoulli(torch.ones(bs, device=cond.device) * (1 - self.cond_mask_prob))
+            mask = mask[(...,)+(None,)*(cond.dim()-1)]
+            cond = cond*mask
+        return cond*uncond
 
     def stylization(self, x, emb):
         x = x*self.mlp_gamma(emb) + self.mlp_beta(emb)
         return x
 
-    def forward(self, x, timesteps, tpose=None, uncond=False):
+    def forward(self, x, timesteps, y):
         """
         x: [batch_size, sequence_len, nbfreq, 3], denoted x_t in the paper
         timesteps: [batch_size] (int)
@@ -102,9 +103,12 @@ class Baseline(nn.Module):
         # embpre = self.embed_timestep(timesteps-1)
         output_static = self.enc_static(x)
         
-        _ , beta_emb = self.tpose_ae(tpose)
+        _ , beta_emb = self.tpose_ae(y["tpose"])
 
-        beta_emb = self.mask_cond(beta_emb, uncond)
+        action_emb = self.embed_action(y['action'])
+        emb += self.mask_cond(action_emb, y["actioncond"]).unsqueeze(1)
+
+        beta_emb = self.mask_cond(beta_emb, y["shapecond"])
 
         # timesteps embedding
         output_cond = self.t_emb(emb, output_static) 
@@ -256,3 +260,14 @@ class PredictSigma(Baseline):
 
         output_var = self.dec_var(output_transformer)
         return torch.concat([output, output_var], dim=1)
+
+
+class EmbedAction(nn.Module):
+    def __init__(self, num_actions, latent_dim):
+        super().__init__()
+        self.action_embedding = nn.Parameter(torch.randn(num_actions, latent_dim))
+
+    def forward(self, input):
+        idx = input[:, 0].to(torch.long)  # an index array must be long
+        output = self.action_embedding[idx]
+        return output

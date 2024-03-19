@@ -132,19 +132,15 @@ def fill_dataset(seqInfos):
     path_trans_file = opt["path_dataset"] + "trans.bin"
     path_rot_file = opt["path_dataset"] + "rots.bin"
     path_lengths_file = opt["path_dataset"] + "lengths.bin"
-    path_genders_file = opt["path_dataset"] + "genders.bin"
-    path_actions_file = opt["path_dataset"] + "action.bin"
     path_tpose_file = opt["path_dataset"] + "tpose.bin"
-
+    actions = []
     # dataset file
     with \
             open(path_dataset_file, "wb") as dataset_file, \
             open(path_lengths_file, "wb") as lengths_file, \
-            open(path_genders_file, "wb") as genders_file, \
             open(path_trans_file, "wb") as trans_file, \
             open(path_rot_file, "wb") as rots_file, \
-            open(path_tpose_file, "wb") as tpose_file, \
-            open(path_actions_file, "wb") as actions_file:
+            open(path_tpose_file, "wb") as tpose_file:
 
         for sequence_path in seqInfos.keys():
 
@@ -172,14 +168,11 @@ def fill_dataset(seqInfos):
 
                 if subject_gender == "male":
                     current_bm = bm_male
-                    gender_array = np.array(0, dtype=int)
                 elif subject_gender == "female":
                     current_bm = bm_female
-                    gender_array = np.array(1, dtype=int)
                 else:
                     print('neutral gender')
-                    exit()
-                gender_array.tofile(genders_file)
+                    continue
 
                 new_npz_data = {}
 
@@ -308,7 +301,7 @@ def fill_dataset(seqInfos):
 
                 length = np.array(length, dtype=int)
                 length.tofile(lengths_file)
-                np.array(action, dtype=str).tofile(actions_file)
+                actions.append(action)
 
             # uncomment if you want to create few samples for testing
             '''if total_nb_samples > 100:
@@ -317,9 +310,10 @@ def fill_dataset(seqInfos):
                     welford.save()
 
                 return'''
-
+    np.save(opt["path_dataset"] + "action.npy", actions)
     welford.finalize()
     welford.save()
+
 
     print("total_nb_frames", total_nb_frames)
     print("total_nb_samples", total_nb_samples)

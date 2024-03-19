@@ -1258,17 +1258,6 @@ class GaussianDiffusion:
 
         terms = {}
         model_output = model(x_t, self._scale_timesteps(t), **model_kwargs)
-        
-        if self.learn_shape:
-            shape = model.shape_pre(x_t, self._scale_timesteps(t))
-            shape_ori = model.shape_pre(x_start, torch.zeros_like(t))
-            selected = torch.randint(90, (2,10))
-            terms['shape'] = self.lambda_shape * torch.stack([
-                contrastive_loss(shape[:,selected[0,i],:], shape_ori[:, selected[1,i], :])\
-                for i in range(10)
-            ]).mean(0)
-        else:
-            model_output = model(x_t, self._scale_timesteps(t), **model_kwargs)
 
         if self.model_var_type in [
             ModelVarType.LEARNED,

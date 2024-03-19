@@ -13,7 +13,7 @@
             "justMyCode": true,
             "args": [
                 "--save_dir", "save/test",
-                "--data_dir", "data/datasets/dataset_MI_1024_sv_rerot_trans/",
+                "--data_dir", "data/datasets/dataset_MI_1024_sv_walk_arm/",
                 "--train_platform_type", "NoPlatform",
                 "--lambda_res_trans", "1e4",
                 "--lambda_trans", "50",
