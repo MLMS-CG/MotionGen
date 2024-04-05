@@ -11,7 +11,7 @@ class Classifier(nn.Module):
 
         self.latent_dim = 256
 
-        self.module_static = LearnedPooling(sizes_downsample=[1024,64,32])
+        self.module_static = LearnedPooling(self.latent_dim,sizes_downsample=[1024,64,32])
 
     def forward(self, x):
 

@@ -6,7 +6,7 @@ import json
 import utils.welford_means_stds as w
 from typing import *
 from scipy.spatial.transform import Rotation as R
-
+from tqdm import tqdm
 from os import path
 from human_body_prior.body_model.body_model import BodyModel
 
@@ -142,7 +142,7 @@ def fill_dataset(seqInfos):
             open(path_rot_file, "wb") as rots_file, \
             open(path_tpose_file, "wb") as tpose_file:
 
-        for sequence_path in seqInfos.keys():
+        for sequence_path in tqdm(seqInfos.keys()):
 
             npz_data = np.load(
                 path.join(opt["amass_directory"], sequence_path)
@@ -158,11 +158,17 @@ def fill_dataset(seqInfos):
             for info in seqInfos[sequence_path]:
 
                 action, startTime, endTime = info
+
+                startTime = np.max([0.0,startTime])
                 # select based on time period
-                selectedIndex = np.where((timeStamp>=startTime) & (timeStamp<=endTime))[0]
-                # down sample
-                sampledNum = int((endTime - startTime) * opt["framerate"])
-                if sampledNum<=0:
+                if endTime<0:
+                    selectedIndex = np.where((timeStamp>=startTime))[0]
+                    sampledNum = int((timeStamp[-1] - startTime) * opt["framerate"])
+                else:
+                    selectedIndex = np.where((timeStamp>=startTime) & (timeStamp<=endTime))[0]
+                    # down sample
+                    sampledNum = int((endTime - startTime) * opt["framerate"])
+                if sampledNum<=0 or len(selectedIndex)==0:
                     continue
                 selected = (np.round(np.linspace(selectedIndex[0], selectedIndex[-1], num = sampledNum, endpoint=True))).astype(np.int16)
 
@@ -278,7 +284,6 @@ def fill_dataset(seqInfos):
                         for k in range(len(body_pose_beta.v))
                     ])
 
-
                     coeffs = torch.matmul(evecs, torch.tensor(verts).to("cuda").to(torch.float32))
 
                     welford.aggregate(coeffs.clone(), flatten=False)
@@ -322,7 +327,10 @@ def fill_dataset(seqInfos):
 
 
 def create_dataset():
-    selectedData = selectDataset(opt["babel_directory"], opt["action_categories"])
+    selectedData = selectDataset(
+        opt["babel_directory"], 
+        opt["action_categories"] + opt["non_labeled"]
+    )
 
     fill_dataset(selectedData)
 

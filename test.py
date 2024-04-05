@@ -51,3 +51,45 @@ for dataset in datasets:
             shapes[shape]["frames"].append(data.f.poses.shape[0])
 
 print(1)
+
+# visualize input data
+import mmap
+from scipy.spatial.transform import Rotation as R
+import trimesh
+
+with open("data/evecs_4096.bin", "r+b") as f:
+    mm = mmap.mmap(f.fileno(), 0)
+    evecs = np.frombuffer(
+        mm[:], dtype=np.float32).reshape(6890, 4096)
+    
+path_faces = "data/faces.bin"
+
+with open(path_faces, "r+b") as f:
+    mm = mmap.mmap(f.fileno(), 0)
+    smpl_faces = np.frombuffer(mm[:], dtype=np.intc).reshape(-1, 3)
+    
+evecs = evecs[:, :1024]
+mean, std = self.means_stds
+mean = mean.cpu().numpy()
+std = std.cpu().numpy()
+def visualize(data):
+    result = data.cpu().numpy()
+    rot = result[:,-2,:]
+    trans = result[:,-1,:]
+    res_mesh = result[:,:-2,:]
+    rec_verts = np.matmul(evecs, res_mesh*std+mean)
+
+    rot_mat = R.from_rotvec(rot).as_matrix()
+    for j in range(90):
+        _ = trimesh.Trimesh(np.matmul(rot_mat[j], rec_verts[j].T).T+trans[j], smpl_faces).export("render/test/t"+str(j)+".obj")
+
+
+import matplotlib.pyplot as plt
+classes = ["walk", "arm", "jump", "run"]
+fig = plt.figure()
+for x in range(2):
+    for y in range(4):
+        ax = plt.subplot(2, 4, x*4+y+1)
+        ax.set_title(classes[model_kwargs['y']['action'][x*4+y]])
+        ax.plot(x_start[:,:,:-2,:][x*4+y][:,:5,0].cpu().numpy())
+plt.show()

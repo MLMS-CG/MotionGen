@@ -103,6 +103,7 @@ class TrainLoop:
 
     def run_loop(self):
         for epoch in range(self.num_epochs):
+            self.train_data.dataset.new_epoch()
             print(f'Starting epoch {epoch}')
             for motion, cond in tqdm(self.train_data):
 
@@ -125,10 +126,10 @@ class TrainLoop:
 
                 if self.step % self.save_interval == 0:
                     self.save()
-                    self.model.eval()
-                    self.evaluate()
-                    self.model.train()
-                    self.model.tpose_ae.eval()
+                    # self.model.eval()
+                    # self.evaluate()
+                    # self.model.train()
+                    # self.model.tpose_ae.eval()
 
                     # Run for a finite amount of time in integration tests.
                     if os.environ.get("DIFFUSION_TRAINING_TEST", "") and self.step > 0:
@@ -139,7 +140,7 @@ class TrainLoop:
         # Save the last checkpoint if it wasn't already saved.
         if (self.step - 1) % self.save_interval != 0:
             self.save()
-            self.evaluate()
+            # self.evaluate()
 
     @torch.no_grad()
     def evaluate(self):

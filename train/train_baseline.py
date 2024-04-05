@@ -36,9 +36,9 @@ def main():
     train_data, means_stds = get_dataset_loader(
         "train", args.data_dir, args.batch_size, args.nb_freqs, args.offset, args.size_window, return_gender=args.return_gender, rot_aug=args.rot_aug
     )
-    val_data, _ = get_dataset_loader(
-        "val",  args.data_dir, args.batch_size, args.nb_freqs, args.offset, args.size_window, means_stds, return_gender=args.return_gender, rot_aug=args.rot_aug
-    )
+    # val_data, _ = get_dataset_loader(
+    #     "val",  args.data_dir, args.batch_size, args.nb_freqs, args.offset, args.size_window, means_stds, return_gender=args.return_gender, rot_aug=args.rot_aug
+    # )
 
     if args.cuda:
         means_stds = [torch.tensor(ele).to("cuda") for ele in means_stds]
@@ -54,7 +54,7 @@ def main():
 
     print('Total params: %.2fM' % (sum(p.numel() for p in model.parameters()) / 1000000.0))
     print("Training...")
-    TrainLoop(args, train_platform, model, diffusion, [train_data, val_data]).run_loop()
+    TrainLoop(args, train_platform, model, diffusion, [train_data, None]).run_loop()
     train_platform.close()
 
 if __name__ == "__main__":

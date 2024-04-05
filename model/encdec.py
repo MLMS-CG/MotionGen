@@ -135,12 +135,12 @@ class Decoder(torch.nn.Module):
         return x
 
 class LearnedPooling(torch.nn.Module):
-    def __init__(self, sizes_downsample=[1026,64,32]):
+    def __init__(self, latent_dim, sizes_downsample=[1026,64,32]):
         super().__init__()
 
         encoder_features = [3,32,64]
 
-        self.latent_space = 256
+        self.latent_space = latent_dim
 
         self.activation = nn.ELU
 

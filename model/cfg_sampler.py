@@ -10,10 +10,21 @@ class ClassifierFreeSampleModel(nn.Module):
     def __init__(self, model, scaler):
         super().__init__()
         self.model = model  # model is the actual model to run
-        self.scaler = scaler
+        self.alpha_shape = 0.6
+        self.alpha_act = 0.8
 
-    def forward(self, x, timesteps, tpose):
-        # assert cond_mode in ['text', 'action']
-        out = self.model(x, timesteps, tpose)
-        out_uncond = self.model(x, timesteps, tpose, True)
-        return out_uncond + (self.scaler * (out - out_uncond))
+    def forward(self, x, timesteps, y):
+        # out = self.model(x, timesteps, y)
+        yuncond = deepcopy(y)
+        yuncond['actioncond']-=1
+        shapecond = self.model(x, timesteps, yuncond)
+        yuncond['actioncond']+=1
+        yuncond['shapecond']-=1
+        actioncond = self.model(x, timesteps, yuncond)
+        yuncond['actioncond']-=1
+        out_uncond = self.model(x, timesteps, yuncond)
+        return out_uncond + \
+            self.alpha_shape * (shapecond - out_uncond) + \
+            self.alpha_act * (actioncond-out_uncond)
+        # return out_uncond + \
+        #     self.alpha_shape * (shapecond - out_uncond)

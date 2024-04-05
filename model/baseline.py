@@ -32,7 +32,7 @@ class Baseline(nn.Module):
 
         self.tpose_ae = Classifier()
 
-        self.cond_mask_prob = 0.2
+        self.cond_mask_prob = 0
 
         self.positional_encoding = PositionalEncoding(self.latent_dim)
         self.embed_timestep = TimestepEmbedder(self.latent_dim, self.positional_encoding)
@@ -44,7 +44,7 @@ class Baseline(nn.Module):
         if self.shape:
             self.shape_enc = nn.Linear(self.latent_dim, self.latent_dim)
 
-        self.module_static = LearnedPooling()
+        self.module_static = LearnedPooling(self.latent_dim)
 
         # Transformer to extract temporal information
         encoder_layer = nn.TransformerEncoderLayer(
@@ -76,8 +76,9 @@ class Baseline(nn.Module):
         self.decoder_first_linear = nn.Linear(self.latent_dim, self.latent_dim)
         self.decoder_end_linear = nn.Linear(self.latent_dim, self.latent_dim)
 
-        self.mlp_gamma = nn.Linear(self.latent_dim, self.latent_dim)
-        self.mlp_beta = nn.Linear(self.latent_dim, self.latent_dim)
+        self.mlp_gamma = nn.Linear(256, self.latent_dim)
+        self.mlp_beta = nn.Linear(256, self.latent_dim)
+        # self.embed_beta = nn.Linear(256, self.latent_dim)
 
         self.embed_action = EmbedAction(4, self.latent_dim)
 
@@ -107,23 +108,16 @@ class Baseline(nn.Module):
 
         action_emb = self.embed_action(y['action'])
         emb += self.mask_cond(action_emb, y["actioncond"]).unsqueeze(1)
+        # action_emb = self.mask_cond(action_emb, y["actioncond"]).unsqueeze(1)
 
         beta_emb = self.mask_cond(beta_emb, y["shapecond"])
+        beta_emb = beta_emb
 
         # timesteps embedding
         output_cond = self.t_emb(emb, output_static) 
 
-
-        # 23-26 févr
-        # output_transformer = self.dec_transformer(self.stylization(output_cond, beta_emb), output_cond)[:,-self.size_window:,:]
-        
-        # 28 févr plus
-        # output_transformer = self.enc_transformer(beta_emb + output_cond)[:,-self.size_window:,:]
-
         # 28 févr sty
         output_transformer = self.enc_transformer(self.stylization(output_cond, beta_emb))[:,-self.size_window:,:]
-        # res
-        # output = self.dec_static(output_transformer+output_cond[:,-self.size_window:,:])
 
         # nores
         output = self.dec_static(output_transformer)

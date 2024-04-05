@@ -171,7 +171,7 @@ def save_model(mp_trainer, opt, step):
         mp_trainer.master_params_to_state_dict(mp_trainer.master_params),
         os.path.join("save/autoencoder/", f"model{step:04d}.pt"),
     )
-    torch.save(opt.state_dict(), os.path.join("save/classifier/", f"opt{step:06d}.pt"))
+    torch.save(opt.state_dict(), os.path.join("save/autoencoder/", f"opt{step:06d}.pt"))
 
 if __name__ == "__main__":
     main()

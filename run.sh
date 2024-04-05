@@ -72,4 +72,12 @@ cd /home/kxue/Work/MotionGen/MotionGen
 
 # python train/train_baseline.py --save_dir save/walkarm_rerot10_trans50_resT1e4_x0_cosine_mesh1_velo1 --data_dir data/datasets/dataset_MI_1024_sv_walk_arm/ --train_platform_type ClearmlPlatform --num_steps 70_000 --lambda_trans 50 --lambda_rot 10 --lambda_res_trans 1e4 --noise_schedule cosine
 
-python train/train_baseline.py --save_dir save/walkarmjumprun_rerot10_trans50_resT1e4_x0_cosine_mesh1_velo1 --data_dir data/datasets/dataset_MI_1024_sv_walk_arm_jump_run/ --train_platform_type ClearmlPlatform --num_steps 70_000 --lambda_trans 50 --lambda_rot 10 --lambda_res_trans 1e4 --noise_schedule cosine
+# python train/train_baseline.py --save_dir save/walkarmjumprun_rerot10_trans50_resT1e4_x0_cosine_mesh1_velo1 --data_dir data/datasets/dataset_MI_2048_sv_walk_arm_jump_run/ --train_platform_type ClearmlPlatform --num_steps 70_000 --lambda_trans 50 --lambda_rot 10 --lambda_res_trans 1e4 --noise_schedule cosine
+
+# python train/train_baseline.py --save_dir save/balance_rerot10_trans50_resT1e4_x0_cosine_mesh1_velo1 --data_dir data/datasets/dataset_MI_1024_sv_walk_arm_jump_run/ --train_platform_type ClearmlPlatform --num_steps 70_000 --lambda_trans 50 --lambda_rot 10 --lambda_res_trans 1e4 --noise_schedule cosine --latent_dim 512 --batch_size 64
+
+# python train/train_baseline.py --save_dir save/walkarm_rerot10_trans50_resT1e4_x0_cosine_mesh1_velo1 --data_dir data/datasets/dataset_MI_1024_sv_walk_arm_jump_run/ --train_platform_type ClearmlPlatform --num_steps 70_000 --lambda_trans 50 --lambda_rot 10 --lambda_res_trans 1e4 --noise_schedule cosine --latent_dim 512 --batch_size 64 --diffusion_steps 1000
+
+python train/train_baseline.py --save_dir save/balancemirror_rerot10_trans50_resT1e4_x0_cosine_mesh1_velo1 --data_dir data/datasets/dataset_MI_1024_sv_walk_arm_jump_run/ --train_platform_type ClearmlPlatform --num_steps 70_000 --lambda_trans 50 --lambda_rot 10 --lambda_res_trans 1e4 --noise_schedule cosine --latent_dim 512 --batch_size 64
+
+# python train/train_baseline.py --save_dir save/walkarmjumprun_rerot10_trans50_resT1e4_x0_cosine_mesh1_velo1 --data_dir data/datasets/dataset_MI_1024_sv_walk_arm_jump_run/ --train_platform_type ClearmlPlatform --num_steps 70_000 --lambda_trans 50 --lambda_rot 10 --lambda_res_trans 1e4 --noise_schedule cosine

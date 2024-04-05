@@ -19,7 +19,7 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 
 torch.backends.cudnn.enabled = False
-exp_name = "shapecosine_rerot10_trans50_resT1e4_x0_linear_mesh1_velo1/"
+exp_name = "balance_rerot10_trans50_resT1e4_x0_cosine_mesh1_velo1/"
 path = "./save/" + exp_name
 
 with open("preProcessing/default_options_dataset.json", "r") as outfile:
@@ -50,7 +50,7 @@ class dotdict(dict):
 with open(path + "args.json", "r") as outfile:
     args = dotdict(json.load(outfile))
 args.batch_size = 8
-scaler = 2
+scaler = 0.5
 
 def get_result(model, diffusion, shape, model_kwargs=None):
     data = diffusion.p_sample_loop(model, shape, clip_denoised=False, model_kwargs=model_kwargs)
@@ -79,8 +79,6 @@ def result2mesh(data):
 def training_perform():
     train_data = get_dataset("train", args.data_dir, args.nb_freqs, args.offset, args.size_window, None)
     means_stds = train_data.means_stds
-    val_data = get_dataset(
-        "val",  args.data_dir, args.nb_freqs, args.offset, args.size_window, means_stds)
 
     means_stds = [torch.tensor(ele) for ele in means_stds]
     if args.cuda:
@@ -97,83 +95,42 @@ def training_perform():
         )
     )
     model.eval()
-
-    # classifier = Classifier()
-    # classifier.load_state_dict(dist_util.load_state_dict(
-    #     "save/autoencoder/model0099.pt", map_location=dist_util.dev()
-    # ))
-    # classifier.to("cuda")
-    # classifier.eval()
-
-    # y = torch.tensor(train_data.__getitem__(50)[0]).to("cuda")[:-2].unsqueeze(0).repeat(10,1,1).unsqueeze(1)
-    # def cond_fn(x, t):
-    #     with torch.enable_grad():
-    #         # if t[0]>1400:
-    #         #     return torch.zeros_like(x).to("cuda")
-    #         x_in = x[:,:,:-2,:].detach().requires_grad_(True)
-    #         _, rep = classifier(x_in, t)
-    #         _, rep_ori = classifier(y, torch.zeros_like(t).to("cuda"))
-    #         rep = F.normalize(rep, dim=-1)
-    #         rep_ori = F.normalize(rep_ori, dim=-1)
-    #         logits = ((rep@rep_ori.transpose(-1,-2))-1).sum()
-    #         grad = torch.autograd.grad(logits, x_in)[0] * 10
-    #         return F.pad(grad,(0,0,0,2), "constant", 0)
-
-    target = torch.tensor(train_data.__getitem__(50)[1]).to("cuda")
-    target = target[(None,)*2].repeat(args.batch_size,1,1,1)
-    cond = {"tpose":target}
-
     mean, std = train_data.means_stds
 
-    def render_batch(res_mesh):
-        rec_verts = np.matmul(evecs.cpu().numpy(), res_mesh*std+mean)
-        rec_meshes = []
-        for frame in range(rec_verts.shape[1]):
-            shapes = rec_verts[:,frame,:,:]
-            verts = []
-            faces = []
-            for i in np.arange(len(shapes)):
-                verts.append(shapes[i]+(i*0.6,0,0))
-                faces.append(smpl_faces+6890*i)
-            verts = np.concatenate(verts, axis=0)
-            faces = np.concatenate(faces, axis=0)
-            rec_meshes.append(trimesh.Trimesh(verts, faces))
-        seq_imgs = seq2imgs(rec_meshes, z_bias=2.2, x_bias=2.1, width=1200)
-        return seq_imgs
+    tposes = np.load(args.data_dir+"target.npy")
+    target = torch.tensor((tposes[17].astype(np.float32)-mean)/std).to("cuda")
 
-    def render_single(res_mesh, index):
-        rec_verts = np.matmul(evecs.cpu().numpy(), res_mesh[index]*std+mean)
-        rec_meshes = [trimesh.Trimesh(mesh, smpl_faces) for mesh in rec_verts]
-        seq_imgs = seq2imgs(rec_meshes)
-        return seq_imgs
+    _ = trimesh.Trimesh(np.matmul(evecs.cpu().numpy(), target.cpu().numpy()*std+mean), smpl_faces).export("tpose.obj")
+
+    target = target[(None,)*2].repeat(args.batch_size,1,1,1)
     
-    # original generation process 
-    result = get_result(model, diffusion, (args.batch_size,90,1026,3), model_kwargs=cond)
+    actions = ["walk", "arm", "jump", "run"]
 
-    rot = result[:,:,-2,:]
-    trans = result[:,:,-1,:]
-    res_mesh = result[:,:,:-2,:]
-    rec_verts = np.matmul(evecs.cpu().numpy(), res_mesh*std+mean)
+    for a in range(1):
+        action = [a for i in range(args.batch_size)]
+        actioncond = [1 for i in range(args.batch_size)]
+        cond = {'y': {'tpose': target}}
+        cond['y'].update({'action': torch.tensor(action).unsqueeze(1)})
+        cond['y'].update({'actioncond': torch.tensor(actioncond).to("cuda")})
+        cond['y'].update({'shapecond': torch.ones_like(cond['y']['actioncond'])})
+ 
+        # original generation process 
+        result = get_result(model, diffusion, (args.batch_size,90,1026,3), model_kwargs=cond)
 
-    save_path = "render/shaped_"+exp_name
-    os.makedirs(save_path, exist_ok=True)
-    for i in range(args.batch_size):
-        rot_mat = R.from_rotvec(rot[i]).as_matrix()
-        for j in range(90):
-            _ = trimesh.Trimesh(np.matmul(rot_mat[j], rec_verts[i,j].T).T+trans[i,j], smpl_faces).export(save_path+"/test_"+str(scaler)+"_"+str(i)+"_"+str(j)+".obj")
+        rot = result[:,:,-2,:]
+        trans = result[:,:,-1,:]
+        res_mesh = result[:,:,:-2,:]
+        rec_verts = np.matmul(evecs.cpu().numpy(), res_mesh*std+mean)
 
-    seq_imgs = render_single(result[:,:,:-2,:],0)
-    frames = []
-    fig = plt.figure()
-    for i in seq_imgs:
-        frames.append([plt.imshow(i, animated=True)])
-    ani= animation.ArtistAnimation(fig, frames, interval=int(1000/30), blit=True,
-                                repeat_delay=0)
-    plt.show()
+        save_path = "render/shaped_"+exp_name
+        os.makedirs(save_path, exist_ok=True)
+        for i in range(args.batch_size):
+            rot_mat = R.from_rotvec(rot[i]).as_matrix()
+            for j in range(90):
+                _ = trimesh.Trimesh(np.matmul(rot_mat[j], rec_verts[i,j].T).T+trans[i,j], smpl_faces).export(save_path+"/test"+actions[a]+"_"+str(i)+"_"+str(j)+".obj")
 
 if __name__ == "__main__":
     training_perform()
-
 
 
 # verts_gen = [result[1,i,:,:] for i in range(0,90,10)]
