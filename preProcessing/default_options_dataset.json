@@ -1,9 +1,10 @@
 {
     "device": "cuda",
-    "path_dataset": "data/datasets/test/",
+    "path_dataset": "data/datasets/dataset_MI_1024_multiclass/",
     "amass_directory": "/home/kxue/Work/MotionGen/AMASS/",
     "babel_directory": "/home/kxue/Work/MotionGen/babel_v1.0_release/",
-    "action_categories": ["walk"], 
+    "action_categories": ["walk", "jump", "run", "sit", "stretch", "throw", "kick", "gesture"], 
+    "non_labeled": ["transition", "stand", "arm_movements", "backwards movement", "raising body part", "look", "bend", "leg movements", "touching body part", "circular movement"], 
     "nb_freqs": 1024,
     "framerate": 30
   }

@@ -38,9 +38,19 @@ def create_gaussian_diffusion(args, means_stds):
     if not timestep_respacing:
         timestep_respacing = [steps]
 
+    lambdas = {
+        "lambda_mm":args.lambda_mesh_mse,
+        "lambda_mv": args.lambda_mesh_velo,
+        "lambda_shape":args.lambda_shape,
+        "lambda_rot":args.lambda_rot,
+        "lambda_trans":args.lambda_trans,
+        "lambda_res_trans":args.lambda_res_trans,
+    }
+
     return SpacedDiffusion(
         use_timesteps=space_timesteps(steps, timestep_respacing),
         betas=betas,
+        lambdas=lambdas,
         model_mean_type=(
             gd.ModelMeanType.EPSILON if target=="epsilon" else gd.ModelMeanType.START_X
         ),
@@ -56,8 +66,5 @@ def create_gaussian_diffusion(args, means_stds):
         loss_type=loss_type,
         rescale_timesteps=rescale_timesteps,
         means_stds = means_stds,
-        lambda_mm = args.lambda_mesh_mse,
-        lambda_mv = args.lambda_mesh_velo,
-        lambda_shape = args.lambda_shape,
         learn_shape = learn_shape
     )

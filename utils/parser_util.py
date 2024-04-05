@@ -76,6 +76,9 @@ def add_diffusion_options(parser):
     group.add_argument("--lambda_mesh_mse", default=1, type=float)
     group.add_argument("--lambda_mesh_velo", default=1, type=float)
     group.add_argument("--lambda_shape", default=1, type=float)
+    group.add_argument("--lambda_rot", default=1, type=float)
+    group.add_argument("--lambda_trans", default=1, type=float)
+    group.add_argument("--lambda_res_trans", default=1, type=float)
 
 
 def add_model_options(parser):
@@ -105,6 +108,7 @@ def add_data_options(parser):
     with open("preProcessing/default_options_dataset.json", "r") as outfile:
         opt = json.load(outfile)
     group.add_argument("--size_window", default=90, type=int)
+    group.add_argument("--rot_aug", action='store_true')
     group.add_argument("--offset", default=2, type=int)
     group.add_argument("--nb_freqs", default=opt["nb_freqs"], type=int)
     group.add_argument("--data_dir", default=opt["path_dataset"], type=str,

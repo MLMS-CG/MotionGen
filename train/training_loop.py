@@ -103,18 +103,17 @@ class TrainLoop:
 
     def run_loop(self):
         for epoch in range(self.num_epochs):
+            self.train_data.dataset.new_epoch()
             print(f'Starting epoch {epoch}')
-            for motion in tqdm(self.train_data):
+            for motion, cond in tqdm(self.train_data):
 
                 if not (not self.lr_anneal_steps or self.step + self.resume_step < self.lr_anneal_steps):
                     break
 
-                if isinstance(motion, list):
-                    motion = [item.to(self.device) for item in motion]
-                else:
-                    motion = motion.to(self.device)
+                motion = motion.to(self.device)
+                cond['y'] = {key: val.to(self.device) if torch.is_tensor(val) else val for key, val in cond['y'].items()}
 
-                self.run_step(motion)
+                self.run_step(motion, cond)
                 if self.step % self.log_interval == 0:
                     for k,v in logger.get_current().dumpkvs().items():
                         if k == 'loss':
@@ -127,9 +126,10 @@ class TrainLoop:
 
                 if self.step % self.save_interval == 0:
                     self.save()
-                    self.model.eval()
-                    self.evaluate()
-                    self.model.train()
+                    # self.model.eval()
+                    # self.evaluate()
+                    # self.model.train()
+                    # self.model.tpose_ae.eval()
 
                     # Run for a finite amount of time in integration tests.
                     if os.environ.get("DIFFUSION_TRAINING_TEST", "") and self.step > 0:
@@ -140,7 +140,7 @@ class TrainLoop:
         # Save the last checkpoint if it wasn't already saved.
         if (self.step - 1) % self.save_interval != 0:
             self.save()
-            self.evaluate()
+            # self.evaluate()
 
     @torch.no_grad()
     def evaluate(self):
@@ -148,15 +148,9 @@ class TrainLoop:
         #     return
         start_eval = time.time()
         losses = []
-        for motion in tqdm(self.val_data):
-            cond = None
-            if isinstance(motion, list):
-                motion = [item.to(self.device) for item in motion]
-                motion, gender = motion
-                cond = {"gender":gender}
-            else:
-                motion = motion.to(self.device)
-
+        for motion, cond in tqdm(self.val_data):
+            motion = motion.to(self.device)
+            cond['y'] = {key: val.to(self.device) if torch.is_tensor(val) else val for key, val in cond['y'].items()}
             
             t, weights = self.schedule_sampler.sample(motion.shape[0], dist_util.dev())
             compute_losses = functools.partial(
@@ -173,19 +167,14 @@ class TrainLoop:
         print(f'Evaluation time: {round(end_eval-start_eval)/60}min')
         print(f'Evaluation loss: {np.mean(losses)}')
 
-    def run_step(self, batch):
-        self.forward_backward(batch)
+    def run_step(self, batch, cond):
+        self.forward_backward(batch, cond)
         self.mp_trainer.optimize(self.opt)
         self._anneal_lr()
         self.log_step()
 
-    def forward_backward(self, batch):
+    def forward_backward(self, batch, cond):
         self.mp_trainer.zero_grad()
-
-        cond = None
-        if isinstance(batch, list):
-            batch, gender = batch
-            cond = {"gender":gender}
 
         t, weights = self.schedule_sampler.sample(batch.shape[0], dist_util.dev())
 

@@ -136,9 +136,7 @@ class GaussianDiffusion:
         model_mean_type,
         model_var_type,
         loss_type,
-        lambda_mm=1,
-        lambda_mv=1,
-        lambda_shape = 1,
+        lambdas,
         rescale_timesteps=False,
         means_stds = None,
         learn_shape=False
@@ -151,9 +149,12 @@ class GaussianDiffusion:
 
         self.learn_shape = learn_shape
 
-        self.lambda_mm = lambda_mm
-        self.lambda_mv = lambda_mv
-        self.lambda_shape = lambda_shape
+        self.lambda_mm = lambdas["lambda_mm"]
+        self.lambda_mv = lambdas["lambda_mv"]
+        self.lambda_shape = lambdas["lambda_shape"]
+        self.lambda_rot = lambdas["lambda_rot"]
+        self.lambda_trans = lambdas["lambda_trans"]
+        self.lambda_res_trans = lambdas["lambda_res_trans"]
 
         # Use float64 for accuracy.
         betas = np.array(betas, dtype=np.float64)
@@ -194,8 +195,9 @@ class GaussianDiffusion:
             / (1.0 - self.alphas_cumprod)
         )
 
-        self.l2_loss = lambda a, b: (a - b) ** 2  # th.nn.MSELoss(reduction='none')  # must be None for handling mask later on.
-
+        self.l2_loss = th.nn.MSELoss(reduction='none') 
+        self.l1_loss = torch.nn.L1Loss(reduction='none')
+ 
     def masked_l2(self, a, b, mask):
         # assuming a.shape == b.shape == bs, J, Jdim, seqlen
         # assuming mask.shape == bs, 1, 1, seqlen
@@ -422,7 +424,7 @@ class GaussianDiffusion:
 
         This uses the conditioning strategy from Sohl-Dickstein et al. (2015).
         """
-        gradient = cond_fn(x, self._scale_timesteps(t), **model_kwargs)
+        gradient = cond_fn(x, self._scale_timesteps(t))
         new_mean = (
             p_mean_var["mean"].float() + p_mean_var["variance"] * gradient.float()
         )
@@ -1256,17 +1258,6 @@ class GaussianDiffusion:
 
         terms = {}
         model_output = model(x_t, self._scale_timesteps(t), **model_kwargs)
-        
-        if self.learn_shape:
-            shape = model.shape_pre(x_t, self._scale_timesteps(t))
-            shape_ori = model.shape_pre(x_start, torch.zeros_like(t))
-            selected = torch.randint(90, (2,10))
-            terms['shape'] = torch.stack([
-                contrastive_loss(shape[:,selected[0,i],:], shape_ori[:, selected[1,i], :])\
-                for i in range(10)
-            ]).mean(0)
-        else:
-            model_output = model(x_t, self._scale_timesteps(t), **model_kwargs)
 
         if self.model_var_type in [
             ModelVarType.LEARNED,
@@ -1299,7 +1290,7 @@ class GaussianDiffusion:
         }[self.model_mean_type]
         assert model_output.shape == target.shape == x_start.shape  # [bs, njoints, nfeats, nframes]
 
-        reversed_x_start = x_start*self.means_stds[1]+self.means_stds[0]
+        reversed_x_start = x_start[:,:,:-2,:]*self.means_stds[1]+self.means_stds[0]
         
         predicted_x_start = {
             ModelMeanType.PREVIOUS_X: None,
@@ -1307,27 +1298,40 @@ class GaussianDiffusion:
             ModelMeanType.EPSILON: self._predict_xstart_from_eps(x_t, t, model_output),
         }[self.model_mean_type]
 
-        reversed_model_output = predicted_x_start*self.means_stds[1]+self.means_stds[0]
+        reversed_model_output = predicted_x_start[:,:,:-2,:]*self.means_stds[1]+self.means_stds[0]
         # Use to calculate loss based on mesh
         mesh_output = torch.matmul(evecs, reversed_model_output)
         mesh_start = torch.matmul(evecs, reversed_x_start)
-
-        terms["mse"] = (self.l2_loss(target, model_output)*self.means_stds[1]).sum((2,3)).mean(1) # mean_flat(rot_mse)
+        
+        terms["mse"] = (self.l2_loss(target[:,:,:-2,:], model_output[:,:,:-2,:])*self.means_stds[1]).sum((2,3)).mean(1) # mean_flat(rot_mse)
         terms["mesh_mse"] = self.l2_loss(mesh_output, mesh_start).sum((2,3)).mean(1)
 
+        terms["rot_mse"] = self.lambda_rot * (self.l2_loss(target[:,:,-2,:], model_output[:,:,-2,:])).sum(2).mean(1)
+        terms["trans_mse"] = self.lambda_trans * (self.l2_loss(target[:,:,-1,:], model_output[:,:,-1,:])).sum(2).mean(1)
+        terms["res_trans"] = self.lambda_res_trans * (
+            self.l2_loss(
+                target[:,1:,-1,:2]-target[:,:-1,-1,:2], 
+                model_output[:,1:,-1,:2]- model_output[:,:-1,-1,:2]
+            )
+        ).sum(2).mean(1)
         # mesh_velo = torch.abs(mesh_start[:,1:,:,:]-mesh_start[:,:-1,:,:])
 
-        terms["mesh_velo"] = self.l2_loss(
-            (mesh_start[:,1:,:,:]-mesh_start[:,:-1,:,:]),
-            (mesh_output[:,1:,:,:]-mesh_output[:,:-1,:,:])
-        ).sum((2,3)).mean(1)
-        
-        lambda_mesh = _extract_into_tensor(self.alphas_cumprod, t, terms["mesh_mse"].shape)
+        # terms["mesh_velo"] = self.l2_loss(
+        #     (mesh_start[:,1:,:,:]-mesh_start[:,:-1,:,:]),
+        #     (mesh_output[:,1:,:,:]-mesh_output[:,:-1,:,:])
+        # ).sum((2,3)).mean(1)
+          
+        terms["mesh_mse"] = self.lambda_mm * terms["mesh_mse"]
+        lbd = _extract_into_tensor(self.alphas_cumprod, t, terms["mesh_mse"].shape)
+        terms["mesh_mse"] = lbd * terms["mesh_mse"]
 
-        terms["loss"] = terms["mse"] + terms.get('vb', 0.)\
-               + self.lambda_shape * terms.get('shape', 0.)\
-               + lambda_mesh * self.lambda_mm*terms["mesh_mse"]\
-               + lambda_mesh * self.lambda_mv*terms["mesh_velo"]
+        terms["loss"] = (terms["mse"] + terms.get('vb', 0.)\
+               + terms.get('shape', 0.)\
+               + terms["mesh_mse"]\
+               + terms["rot_mse"]\
+               + terms["trans_mse"]\
+               + terms["res_trans"])
+            #    + lambda_mesh * self.lambda_mv*terms["mesh_velo"]\
 
 
         return terms
