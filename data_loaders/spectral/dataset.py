@@ -115,12 +115,13 @@ class Spactral(data.Dataset):
     def calStdMean(self,data):
         data = np.array(data.reshape(-1, self.nb_freqs, 3))
         # mean
-        mean = data.mean(0)
-        self.means_stds = [np.zeros_like(mean), np.zeros_like(mean)] # mean std
-        self.means_stds[0][:,1:] = mean[:,1:] # because of mirror based on yz plane, mean of x is zero
-        # std
-        self.means_stds[1][:,1:] = data.std(0)[:,1:]
-        self.means_stds[1][:,0] = np.concatenate([data[:,:,0],-data[:,:,0]],axis=0).std(0)
+        # mean = data.mean(0)
+        # self.means_stds = [np.zeros_like(mean), np.zeros_like(mean)] # mean std
+        # self.means_stds[0][:,1:] = mean[:,1:] # because of mirror based on yz plane, mean of x is zero
+        # # std
+        # self.means_stds[1][:,1:] = data.std(0)[:,1:]
+        # self.means_stds[1][:,0] = np.concatenate([data[:,:,0],-data[:,:,0]],axis=0).std(0)
+        self.means_stds = [data.mean(0), data.std(0)]
 
     def __getitem__(self, idx):
         idx = self.indexes[idx]
@@ -141,9 +142,9 @@ class Spactral(data.Dataset):
         # this will make the initial foot z coordinate to 0
         trans[:,:2] = trans[:,:2] - trans[0,:2]
         
-        flag_mirrow = np.random.choice([0,1])
-        if flag_mirrow:
-            selected, trans, rot = self.mirrow_all(selected, trans, rot)
+        # flag_mirrow = np.random.choice([0,1])
+        # if flag_mirrow:
+        #     selected, trans, rot = self.mirrow_all(selected, trans, rot)
         rot = rot.reshape(self.size_window, 1, 3)
         trans = trans.reshape(self.size_window, 1, 3)
 
@@ -156,7 +157,7 @@ class Spactral(data.Dataset):
     
     def new_epoch(self):
         self.indexes  = []
-        used = [0,1,2,3]
+        used = [0,1,2,3,4,5,6,7]
         for i in used:
             indexes = np.where(self.actions==i)[0]
             if self.mode=="eval":
@@ -166,7 +167,11 @@ class Spactral(data.Dataset):
 
 a2l = {
     "walk": 0,
-    "arm movements": 1,
-    "jump": 2,
-    "run": 3,
+    "jump": 1,
+    "run": 2,
+    "sit": 3,
+    "stretch": 4,
+    "throw": 5,
+    "kick": 6,
+    "gesture": 7,
 }

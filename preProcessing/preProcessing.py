@@ -329,7 +329,7 @@ def fill_dataset(seqInfos):
 def create_dataset():
     selectedData = selectDataset(
         opt["babel_directory"], 
-        opt["action_categories"] + opt["non_labeled"]
+        opt["action_categories"]
     )
 
     fill_dataset(selectedData)

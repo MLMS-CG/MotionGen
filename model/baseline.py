@@ -80,7 +80,7 @@ class Baseline(nn.Module):
         self.mlp_beta = nn.Linear(256, self.latent_dim)
         # self.embed_beta = nn.Linear(256, self.latent_dim)
 
-        self.embed_action = EmbedAction(4, self.latent_dim)
+        self.embed_action = EmbedAction(8, self.latent_dim)
 
     def mask_cond(self, cond, uncond=False):
         bs = cond.shape[0]
