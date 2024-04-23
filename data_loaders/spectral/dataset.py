@@ -157,7 +157,7 @@ class Spactral(data.Dataset):
     
     def new_epoch(self):
         self.indexes  = []
-        used = [0,1,2,3,4,5,6,7]
+        used = [0]
         for i in used:
             indexes = np.where(self.actions==i)[0]
             if self.mode=="eval":
