@@ -19,7 +19,7 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 
 torch.backends.cudnn.enabled = False
-exp_name = "multiclass_rerot10_trans50_resT1e4_x0_cosine_mesh1_velo1/"
+exp_name = "kick2000_rerot10_trans50_resT1e4_x0_cosine_mesh1_velo1/"
 path = "./save/" + exp_name
 
 with open("preProcessing/default_options_dataset.json", "r") as outfile:
@@ -49,8 +49,8 @@ class dotdict(dict):
 
 with open(path + "args.json", "r") as outfile:
     args = dotdict(json.load(outfile))
-args.batch_size = 8
-scaler = 0.5
+args.batch_size = 12
+scaler = 0.6
 
 def get_result(model, diffusion, shape, model_kwargs=None):
     data = diffusion.p_sample_loop(model, shape, clip_denoised=False, model_kwargs=model_kwargs)
@@ -91,7 +91,7 @@ def training_perform():
     # load checkpoints
     model.model.load_state_dict(
         dist_util.load_state_dict(
-            path + "model000070000.pt", map_location=dist_util.dev()
+            path + "model000034000.pt", map_location=dist_util.dev()
         )
     )
     model.eval()
@@ -106,30 +106,34 @@ def training_perform():
     
     # actions = ["walk", "arm", "jump", "run"]
     actions = ["walk", "jump", "run", "sit", "stretch", "throw", "kick", "gesture"]
+    # actions = ["walk","jump","throw","kick","gesture","run"]
 
-    for a in range(0,1):
-        action = [a for i in range(args.batch_size)]
-        actioncond = [1 for i in range(args.batch_size)]
-        target = torch.tensor(((tposes[np.random.choice(np.arange(len(tposes)), args.batch_size)].astype(np.float32)-mean)/std)).to("cuda").unsqueeze(1)
-        cond = {'y': {'tpose': target}}
-        cond['y'].update({'action': torch.tensor(action).unsqueeze(1)})
-        cond['y'].update({'actioncond': torch.tensor(actioncond).to("cuda")})
-        cond['y'].update({'shapecond': torch.ones_like(cond['y']['actioncond'])})
- 
-        # original generation process 
-        result = get_result(model, diffusion, (args.batch_size,90,1026,3), model_kwargs=cond)
+    for character in [6]:
+        for a in [6]:
+            action = [a for i in range(args.batch_size)]
+            actioncond = [1 for i in range(args.batch_size)]
+            target = torch.tensor((np.stack([tposes[character] for _ in range(args.batch_size)]).astype(np.float32)-mean)/std).to("cuda").unsqueeze(1)
+            cond = {'y': {'tpose': target}}
+            cond['y'].update({'action': torch.tensor(action).unsqueeze(1)})
+            cond['y'].update({'actioncond': torch.tensor(actioncond).to("cuda")})
+            cond['y'].update({'shapecond': torch.ones_like(cond['y']['actioncond'])})
+            for k in range(1):
+                print(str(character)+"_"+str(a)+"_"+str(k))
+                # original generation process 
+                result = get_result(model, diffusion, (args.batch_size,90,1026,3), model_kwargs=cond)
 
-        rot = result[:,:,-2,:]
-        trans = result[:,:,-1,:]
-        res_mesh = result[:,:,:-2,:]
-        rec_verts = np.matmul(evecs.cpu().numpy(), res_mesh*std+mean)
+                rot = result[:,:,-2,:]
+                trans = result[:,:,-1,:]
+                res_mesh = result[:,:,:-2,:]
+                rec_verts = np.matmul(evecs.cpu().numpy(), res_mesh*std+mean)
 
-        save_path = "render/shaped_"+exp_name
-        os.makedirs(save_path, exist_ok=True)
-        for i in range(args.batch_size):
-            rot_mat = R.from_rotvec(rot[i]).as_matrix()
-            for j in range(90):
-                _ = trimesh.Trimesh(np.matmul(rot_mat[j], rec_verts[i,j].T).T+trans[i,j], smpl_faces).export(save_path+"/fatmale"+actions[a]+"_"+str(i)+"_"+str(j)+".obj")
+                save_path = "render/shaped_"+exp_name
+                os.makedirs(save_path, exist_ok=True)
+                np.save(save_path+"/"+str(character)+"_"+str(a)+"_"+str(k)+".npy", res_mesh*std+mean)
+                for i in range(args.batch_size):
+                    rot_mat = R.from_rotvec(rot[i]).as_matrix()
+                    for j in range(90):
+                        _ = trimesh.Trimesh(np.matmul(rot_mat[j], rec_verts[i,j].T).T+trans[i,j], smpl_faces).export(save_path+"/shape"+str(character)+"_"+str((i+k*args.batch_size)*90+j)+".obj")
 
 if __name__ == "__main__":
     training_perform()
@@ -139,7 +143,7 @@ if __name__ == "__main__":
 # verts_ori = train_data.__getitem__(50)[0]
 # verts_gen = [np.matmul(evecs.cpu().numpy(), verts_gen[i]*std+mean) for i in range(9)]
 # verts_ori = np.matmul(evecs.cpu().numpy(), verts_ori*std+mean)
-# verts = [verts_ori]
+# verts = [verts_ori] 
 # faces = [smpl_faces]
 # for i in range(9):
 #     verts.append(verts_gen[i]+(0,0,0.6*(i+1)))

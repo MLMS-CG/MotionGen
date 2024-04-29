@@ -11,7 +11,7 @@ class ClassifierFreeSampleModel(nn.Module):
         super().__init__()
         self.model = model  # model is the actual model to run
         self.alpha_shape = 0.8
-        self.alpha_act = 0.8
+        self.alpha_act = 0.7
         self.alpha_cond = 0.8
 
     def forward(self, x, timesteps, y):

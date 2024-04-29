@@ -21,6 +21,7 @@
                 "--noise_schedule", "cosine",
                 "--latent_dim", "512",
                 "--batch_size", "10",
+                "--used_id", "0",
             ]
         }
     ]

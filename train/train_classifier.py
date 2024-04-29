@@ -164,7 +164,7 @@ def contrastive_loss(query, key):
     labels = torch.arange(len(query), device=query.device)
 
     return F.cross_entropy(logits/0.2, labels, reduction='none')
-
+   
 
 def save_model(mp_trainer, opt, step):
     torch.save(

@@ -4,10 +4,11 @@ import mmap
 from scipy.spatial.transform import Rotation as R
 
 class Spactral(data.Dataset):
-    def __init__(self, mode, datapath, nb_freqs, offset, size_window, std_mean=None, return_gender=False, rot_aug = False):
+    def __init__(self, mode, datapath, nb_freqs, offset, size_window, std_mean=None, return_gender=False, rot_aug = False, used_id=-1):
         # load dataset
         ## load length and gender data
         self.mode = mode
+        self.used_id=used_id
         with open(datapath + "lengths.bin", "r+b") as f:
             mm = mmap.mmap(f.fileno(), 0)
             self.lengths = np.frombuffer(mm, dtype=int)
@@ -157,7 +158,10 @@ class Spactral(data.Dataset):
     
     def new_epoch(self):
         self.indexes  = []
-        used = [0]
+        used = [0,1,2,5,6]
+        if self.used_id!=-1:
+            used = [self.used_id]
+        print(used)
         for i in used:
             indexes = np.where(self.actions==i)[0]
             if self.mode=="eval":

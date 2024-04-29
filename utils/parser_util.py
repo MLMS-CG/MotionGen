@@ -107,6 +107,7 @@ def add_data_options(parser):
     group = parser.add_argument_group('dataset')
     with open("preProcessing/default_options_dataset.json", "r") as outfile:
         opt = json.load(outfile)
+    group.add_argument("--used_id",default=0, type=int)
     group.add_argument("--size_window", default=90, type=int)
     group.add_argument("--rot_aug", action='store_true')
     group.add_argument("--offset", default=2, type=int)
