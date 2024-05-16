@@ -7,7 +7,7 @@ from copy import deepcopy
 # https://arxiv.org/abs/2207.12598
 class ClassifierFreeSampleModel(nn.Module):
 
-    def __init__(self, model, scaler):
+    def __init__(self, model):
         super().__init__()
         self.model = model  # model is the actual model to run
         self.alpha_shape = 0.8

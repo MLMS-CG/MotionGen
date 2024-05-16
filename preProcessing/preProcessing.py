@@ -9,6 +9,7 @@ from scipy.spatial.transform import Rotation as R
 from tqdm import tqdm
 from os import path
 from human_body_prior.body_model.body_model import BodyModel
+tposes = np.load("data/datasets/dataset_MI_1024_sv_walk_arm_jump_run/"+"target.npy")
 
 with open("preProcessing/default_options_dataset.json", "r") as outfile:
     opt = json.load(outfile)
@@ -229,6 +230,9 @@ def fill_dataset(seqInfos):
                 
                 coeffs_tpose = np.matmul(evecs.cpu().numpy(), verts_tpose)
                 coeffs_tpose.tofile(tpose_file)
+
+                if np.any(coeffs_tpose!=tposes[6]):
+                    continue
 
                 for i in range(0, len(new_npz_data["trans"][:]), max_len):
                     trans = new_npz_data["trans"][i: i + max_len, :]
