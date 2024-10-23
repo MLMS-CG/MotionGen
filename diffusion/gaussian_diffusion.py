@@ -1254,10 +1254,10 @@ class GaussianDiffusion:
             model_kwargs = {}
         if noise is None:
             noise = th.randn_like(x_start)
-        x_t = self.q_sample(x_start, t, noise=noise)
+        x_t = self.q_sample(x_start, t, noise=noise) # noised input data
 
         terms = {}
-        model_output = model(x_t, self._scale_timesteps(t), **model_kwargs)
+        model_output = model(x_t, self._scale_timesteps(t), **model_kwargs) # generated denoised version of input data
 
         if self.model_var_type in [
             ModelVarType.LEARNED,
@@ -1303,6 +1303,10 @@ class GaussianDiffusion:
         # mesh_output = torch.matmul(evecs, reversed_model_output)
         # mesh_start = torch.matmul(evecs, reversed_x_start)
         
+        # The following loss computation is only for the skeleton-level error. 
+        # For the mesh-level error, uncomment the following block to replace with the skeleton-level losses, in the block below.
+
+        # Block for the mesh-level loss
         """terms["mse"] = (self.l2_loss(target[:,:,:-2,:], model_output[:,:,:-2,:])*self.means_stds[1]).sum((2,3)).mean(1) # mean_flat(rot_mse)
         terms["mesh_mse"] = self.l2_loss(mesh_output, mesh_start).sum((2,3)).mean(1)
 
@@ -1314,7 +1318,8 @@ class GaussianDiffusion:
                 model_output[:,1:,-1,:2]- model_output[:,:-1,-1,:2]
             )
         ).sum(2).mean(1)"""
-
+     
+        # Block for the skeleton-level loss
         terms["beta"] = 10*(self.l2_loss(target[:,:,:63], model_output[:,:,:63])).mean((1,2)) 
         terms["rot"] = self.lambda_rot * (self.l2_loss(target[:,:,71:74], model_output[:,:,71:74])).mean((1,2))
         terms["trans"] = self.lambda_trans * (self.l2_loss(target[:,:,74:77], model_output[:,:,74:77])).mean((1,2))
