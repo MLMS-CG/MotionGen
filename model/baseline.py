@@ -45,7 +45,7 @@ class Baseline(nn.Module):
             self.shape_enc = nn.Linear(self.latent_dim, self.latent_dim)
 
         self.module_static = LearnedPooling(self.latent_dim)
-
+        self.mod = "mesh"
         # Transformer to extract temporal information
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=self.latent_dim,
@@ -76,11 +76,11 @@ class Baseline(nn.Module):
         self.decoder_first_linear = nn.Linear(self.latent_dim, self.latent_dim)
         self.decoder_end_linear = nn.Linear(self.latent_dim, self.latent_dim)
 
-        self.mlp_gamma = nn.Linear(256, self.latent_dim)
-        self.mlp_beta = nn.Linear(256, self.latent_dim)
+        self.mlp_gamma = nn.Linear(self.latent_dim, self.latent_dim)
+        self.mlp_beta = nn.Linear(self.latent_dim, self.latent_dim)
         # self.embed_beta = nn.Linear(256, self.latent_dim)
 
-        self.embed_action = EmbedAction(8, self.latent_dim)
+        self.embed_action = EmbedAction(100, self.latent_dim)
 
     def mask_cond(self, cond, uncond=False):
         bs = cond.shape[0]
@@ -95,6 +95,20 @@ class Baseline(nn.Module):
         x = x*self.mlp_gamma(emb) + self.mlp_beta(emb)
         return x
 
+    def mode(self, mod):
+        self.mod = mod
+        self.tpose_ae = nn.Linear(16,self.latent_dim)
+        self.beta_enc_static = nn.Sequential(
+            nn.Linear(77, 64),
+            nn.SiLU(),
+            nn.Linear(64, self.latent_dim),
+        )
+        self.beta_dec_static = nn.Sequential(
+            nn.Linear(self.latent_dim, 64),
+            nn.SiLU(),
+            nn.Linear(64, 77)
+        )
+
     def forward(self, x, timesteps, y):
         """
         x: [batch_size, sequence_len, nbfreq, 3], denoted x_t in the paper
@@ -102,16 +116,20 @@ class Baseline(nn.Module):
         """
         emb = self.embed_timestep(timesteps)  # [1, bs, d]
         # embpre = self.embed_timestep(timesteps-1)
-        output_static = self.enc_static(x)
+        if self.mod=="beta":
+            output_static = self.beta_enc_static(x)
+        else:
+            output_static = self.enc_static(x)
         
-        _ , beta_emb = self.tpose_ae(y["tpose"])
-
         action_emb = self.embed_action(y['action'])
         emb += self.mask_cond(action_emb, y["actioncond"]).unsqueeze(1)
         # action_emb = self.mask_cond(action_emb, y["actioncond"]).unsqueeze(1)
 
+        if self.mod=="beta":
+            beta_emb = self.tpose_ae(y["tpose"])
+        else:
+            _ , beta_emb = self.tpose_ae(y["tpose"])
         beta_emb = self.mask_cond(beta_emb, y["shapecond"])
-        beta_emb = beta_emb
 
         # timesteps embedding
         output_cond = self.t_emb(emb, output_static) 
@@ -120,7 +138,10 @@ class Baseline(nn.Module):
         output_transformer = self.enc_transformer(self.stylization(output_cond, beta_emb))[:,-self.size_window:,:]
 
         # nores
-        output = self.dec_static(output_transformer)
+        if self.mod=="beta":
+            output = self.beta_dec_static(output_transformer)
+        else:
+            output = self.dec_static(output_transformer)
 
         return output
     

@@ -1,9 +1,10 @@
 {
     "device": "cuda",
-    "path_dataset": "data/datasets/test/",
+    "path_dataset": "data/datasets/beta_all/",
     "amass_directory": "/home/kxue/Work/MotionGen/AMASS/",
     "babel_directory": "/home/kxue/Work/MotionGen/babel_v1.0_release/",
-    "action_categories":["walk","jump","throw","kick","run"],
+    "action_categories":["walk", "jump", "run", "sit", "stretch", "throw", "kick", "gesture", "crawl", "jack"],
     "nb_freqs": 1024,
     "framerate": 30
   }
+

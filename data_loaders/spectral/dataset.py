@@ -2,6 +2,7 @@ from torch.utils import data
 import numpy as np
 import mmap
 from scipy.spatial.transform import Rotation as R
+import os
 
 class Spactral(data.Dataset):
     def __init__(self, mode, datapath, nb_freqs, offset, size_window, std_mean=None, return_gender=False, rot_aug = False, used_id=-1):
@@ -17,6 +18,7 @@ class Spactral(data.Dataset):
             [np.sum(self.lengths[:i]) for i in range(len(self.lengths))]
         )
         ## load coefs data
+        self.datapath = datapath
         self.actions = np.load(datapath + "action.npy")
         filename_dataset = datapath + "dataset.bin"
         self.dataset = np.memmap(
@@ -31,22 +33,34 @@ class Spactral(data.Dataset):
             filename_dataset, dtype="float64", mode="c"
         )
         filename_dataset = datapath + "tpose.bin"
-        self.tpose = np.memmap(
-            filename_dataset, dtype="float64", mode="c"
-        ).reshape(-1,1024,3)
+        if "beta" in datapath:
+            self.tpose = np.memmap(
+                filename_dataset, dtype="float64", mode="c"
+            ).reshape(-1,16)
+        else:
+            self.tpose = np.memmap(
+                filename_dataset, dtype="float64", mode="c"
+            ).reshape(-1,1024,3)
+
 
         ## build indices
         self.nb_freqs = nb_freqs
         self.offset = offset
         self.size_window = size_window
-        self.crop_len = self.size_window * self.nb_freqs * 3
+        if "beta" in self.datapath:
+            self.crop_len = self.size_window * 71
+        else:
+            self.crop_len = self.size_window * self.nb_freqs * 3
         self.action_input = []
         self.chunkIndexStartFrame = []
         for i in range(len(self.lengths)):
             current_length = self.lengths[i]
             for j in range(0, current_length, self.offset):
                 if(j + self.size_window) < current_length:
-                    offset = (self.sum_lengths[i] + j) * self.nb_freqs * 3
+                    if "beta" in datapath:
+                        offset = (self.sum_lengths[i] + j) * 71
+                    else:
+                        offset = (self.sum_lengths[i] + j) * self.nb_freqs * 3
                     offset_rot_trans = (self.sum_lengths[i] + j) *  3
                     self.chunkIndexStartFrame.append([i, offset, offset_rot_trans])
                     if self.actions[i] in a2l.keys():
@@ -56,8 +70,12 @@ class Spactral(data.Dataset):
 
         # slice the dataset
         total_length = len(self.chunkIndexStartFrame)
-        # shuffled_index = np.arange(total_length)
-        # np.random.shuffle(shuffled_index)
+
+        if not os.path.isfile(datapath + "shuffleindex.npy"):
+            shuffled_index = np.arange(total_length)
+            np.random.shuffle(shuffled_index)
+            np.save(datapath + "shuffleindex.npy", shuffled_index)
+
         shuffled_index = np.load(datapath + "shuffleindex.npy")
         self.chunkIndexStartFrame = [self.chunkIndexStartFrame[i] for i in shuffled_index]
         self.action_input = np.array(self.action_input)[shuffled_index]
@@ -65,6 +83,11 @@ class Spactral(data.Dataset):
         self.train_length = total_length
         val_length = int(0.2 * total_length)
         
+        if 'beta' in self.datapath:
+            betaMean = np.load("beta_all_mean.npy")
+            betaStd = np.load("beta_all_std.npy")
+            self.tpose = (self.tpose-betaMean)/betaStd
+
         self.mean = -1
         self.std = -1
         # split dataset(split indices)
@@ -114,7 +137,11 @@ class Spactral(data.Dataset):
         return coefs, trans, rots
 
     def calStdMean(self,data):
-        data = np.array(data.reshape(-1, self.nb_freqs, 3))
+        if "beta" in self.datapath:
+            data = np.array(data.reshape(-1, 71))
+        else:
+            data = np.array(data.reshape(-1, self.nb_freqs, 3))
+        self.means_stds = [data.mean(0), data.std(0)]
         # mean
         # mean = data.mean(0)
         # self.means_stds = [np.zeros_like(mean), np.zeros_like(mean)] # mean std
@@ -122,7 +149,6 @@ class Spactral(data.Dataset):
         # # std
         # self.means_stds[1][:,1:] = data.std(0)[:,1:]
         # self.means_stds[1][:,0] = np.concatenate([data[:,:,0],-data[:,:,0]],axis=0).std(0)
-        self.means_stds = [data.mean(0), data.std(0)]
 
     def __getitem__(self, idx):
         idx = self.indexes[idx]
@@ -130,7 +156,11 @@ class Spactral(data.Dataset):
         selected = np.array(self.dataset[
             self.chunkIndexStartFrame[idx][1]:\
             self.chunkIndexStartFrame[idx][1] + self.crop_len 
-        ]).reshape(self.size_window, self.nb_freqs, 3)
+        ])
+        if 'beta' in self.datapath:
+            selected = selected.reshape(self.size_window, 71)
+        else:
+            selected = selected.reshape(self.size_window, self.nb_freqs, 3)
         rot = np.array(self.rots[
             self.chunkIndexStartFrame[idx][2]:\
             self.chunkIndexStartFrame[idx][2] + self.size_window*3
@@ -146,19 +176,25 @@ class Spactral(data.Dataset):
         # flag_mirrow = np.random.choice([0,1])
         # if flag_mirrow:
         #     selected, trans, rot = self.mirrow_all(selected, trans, rot)
-        rot = rot.reshape(self.size_window, 1, 3)
-        trans = trans.reshape(self.size_window, 1, 3)
+        if 'beta' not in self.datapath:
+            rot = rot.reshape(self.size_window, 1, 3)
+            trans = trans.reshape(self.size_window, 1, 3)
 
-        return np.concatenate([(selected-self.means_stds[0])/self.means_stds[1], rot, trans], axis=1).astype(np.float32) \
-        ,((self.tpose[self.chunkIndexStartFrame[idx][0]]-self.means_stds[0])/self.means_stds[1]).astype(np.float32) \
-        , self.action_input[idx]
+        if 'beta' in self.datapath:
+            return np.concatenate([((selected-self.means_stds[0])/self.means_stds[1]), rot, trans], axis=1).astype(np.float32) \
+            ,self.tpose[self.chunkIndexStartFrame[idx][0]].astype(np.float32) \
+            , self.action_input[idx]
+        else:
+            return np.concatenate([(selected-self.means_stds[0])/self.means_stds[1], rot, trans], axis=1).astype(np.float32) \
+            ,((self.tpose[self.chunkIndexStartFrame[idx][0]]-self.means_stds[0])/self.means_stds[1]).astype(np.float32) \
+            , self.action_input[idx]
 
     def __len__(self):
         return len(self.indexes)
     
     def new_epoch(self):
         self.indexes  = []
-        used = [0,1,2,5,6]
+        used = [0,0,1,2,3,4,5,6,7,8,9]
         if self.used_id!=-1:
             used = [self.used_id]
         print(used)
@@ -178,4 +214,6 @@ a2l = {
     "throw": 5,
     "kick": 6,
     "gesture": 7,
+    "crawl":8,
+    "jack":9,
 }

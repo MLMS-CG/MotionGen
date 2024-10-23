@@ -19,7 +19,7 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 
 torch.backends.cudnn.enabled = False
-exp_name = "walk2000_rerot10_trans50_resT1e4_x0_cosine_mesh1_velo1/"
+exp_name = "kick2000_rerot10_trans50_resT1e4_x0_cosine_mesh1_velo1/"
 path = "./save/" + exp_name
 
 with open("preProcessing/default_options_dataset.json", "r") as outfile:
@@ -49,7 +49,7 @@ class dotdict(dict):
 
 with open(path + "args.json", "r") as outfile:
     args = dotdict(json.load(outfile))
-args.batch_size = 9
+args.batch_size = 3
 scaler = 0.6
 
 def get_result(model, diffusion, shape, model_kwargs=None):
@@ -91,14 +91,14 @@ def training_perform():
     # load checkpoints
     model.model.load_state_dict(
         dist_util.load_state_dict(
-            path + "model000040000.pt", map_location=dist_util.dev()
+            path + "model000035000.pt", map_location=dist_util.dev()
         )
     )
 
     model.eval()
     mean, std = train_data.means_stds
 
-    tposes = np.load("data/datasets/dataset_MI_1024_sv_walk_arm_jump_run/"+"target.npy")
+    tposes = np.load("data/datasets/dataset_MI_1024_sv_walk_arm_jump_run/target.npy")
     # target = torch.tensor((tposes[6].astype(np.float32)-mean)/std).to("cuda")
 
     # _ = trimesh.Trimesh(np.matmul(evecs.cpu().numpy(), target.cpu().numpy()*std+mean), smpl_faces).export("tpose.obj")
@@ -107,15 +107,15 @@ def training_perform():
     
     # actions = ["walk", "arm", "jump", "run"]
     actions = ["walk", "jump", "run", "sit", "stretch", "throw", "kick", "gesture"]
-    # actions = ["walk","jump","throw","kick","gesture","run"]
 
     for character in [0]:
-        for a in [0]:
+        for a in [6]:
             action = [a for i in range(args.batch_size)]
             actioncond = [1 for i in range(args.batch_size)]
             # target = torch.tensor((np.stack([tposes[character] for _ in range(args.batch_size)]).astype(np.float32)-mean)/std).to("cuda").unsqueeze(1)
             # target = torch.tensor(((tposes[np.random.choice(np.arange(len(tposes)), args.batch_size)].astype(np.float32)-mean)/std)).to("cuda").unsqueeze(1)
-            characters = [8,8,8,33,33,33,47,47,47]
+            characters = [1,1,1]
+            # characters = np.random.randint(len(tposes), size=args.batch_size)
             target = torch.tensor((np.stack([tposes[c] for c in characters]).astype(np.float32)-mean)/std).to("cuda").unsqueeze(1)
             cond = {'y': {'tpose': target}}
             cond['y'].update({'action': torch.tensor(action).unsqueeze(1)})
@@ -137,7 +137,7 @@ def training_perform():
                 for i in range(args.batch_size):
                     rot_mat = R.from_rotvec(rot[i]).as_matrix()
                     for j in range(90):
-                        _ = trimesh.Trimesh(np.matmul(rot_mat[j], rec_verts[i,j].T).T+trans[i,j], smpl_faces).export(save_path+"/T_"+str((i+k*args.batch_size)*90+j)+".obj")
+                        _ = trimesh.Trimesh(np.matmul(rot_mat[j], rec_verts[i,j].T).T+trans[i,j], smpl_faces).export(save_path+"/KickT5_"+str((i+k*args.batch_size)*90+j)+".obj")
 
 if __name__ == "__main__":
     training_perform()

@@ -12,9 +12,10 @@ from scipy.spatial.transform import Rotation as R
 import os
 from model.cfg_sampler import ClassifierFreeSampleModel
 from tqdm import tqdm
+import trimesh
 
 torch.backends.cudnn.enabled = False
-exp_name = "multiclass_rerot10_trans50_resT1e4_x0_cosine_mesh1_velo1/"
+exp_name = "jump_dmpl_rerot10_trans50_resT1e4_x0_cosine_mesh1_velo1/"
 path = "./save/" + exp_name
 
 with open("preProcessing/default_options_dataset.json", "r") as outfile:
@@ -44,7 +45,7 @@ class dotdict(dict):
 
 with open(path + "args.json", "r") as outfile:
     args = dotdict(json.load(outfile))
-args.batch_size = 32
+args.batch_size = 4
 scaler = 0.5
 
 def get_result(model, diffusion, shape, model_kwargs=None):
@@ -72,69 +73,70 @@ def result2mesh(data):
     return meshes
 
 def training_perform():
-    train_data = get_dataset("train", args.data_dir, args.nb_freqs, args.offset, args.size_window, None)
+    train_data = get_dataset("train", args.data_dir, args.nb_freqs, args.offset, args.size_window, None, used_id=1)
     means_stds = train_data.means_stds
 
     means_stds = [torch.tensor(ele) for ele in means_stds]
     if args.cuda:
         means_stds = [ele.to("cuda") for ele in means_stds]
     model, diffusion = create_unconditioned_model_and_diffusion(args, means_stds)
-    model = ClassifierFreeSampleModel(model, scaler)
+    model = ClassifierFreeSampleModel(model)
 
     if args.cuda:
         model.to("cuda")
     # load checkpoints
     model.model.load_state_dict(
         dist_util.load_state_dict(
-            path + "model000070000.pt", map_location=dist_util.dev()
+            path + "model000100000.pt", map_location=dist_util.dev()
         )
     )
     model.eval()
     mean, std = train_data.means_stds
 
-    tposes = np.load("data/datasets/dataset_MI_1024_sv_walk_arm_jump_run/"+"target.npy")
-    # target = torch.tensor((tposes[6].astype(np.float32)-mean)/std).to("cuda")
+    # tposes = np.load("data/datasets/dataset_MI_1024_sv_walk_arm_jump_run/"+"target.npy")
+    tposes = [np.load("jump_mesh_tpose.npy")]
+    # tpose = trimesh.load("cape.obj")
+    target = torch.tensor((tposes[0].astype(np.float32)-mean)/std).to("cuda")
+    # target = torch.tensor((np.matmul(evecs.cpu().numpy().T, tpose.vertices)-mean)/std).to("cuda").float()
 
     # _ = trimesh.Trimesh(np.matmul(evecs.cpu().numpy(), target.cpu().numpy()*std+mean), smpl_faces).export("tpose.obj")
 
-    # target = target[(None,)*2].repeat(args.batch_size,1,1,1)
+    target = target[(None,)*2].repeat(args.batch_size,1,1,1)
     
     # actions = ["walk", "arm", "jump", "run"]
     # actions = ["walk", "jump", "run", "sit", "stretch", "throw", "kick", "gesture"]
 
     # generated_result = []
-    for ff in tqdm(np.arange(200)):
-        targetindex = np.random.choice(np.arange(len(tposes)), args.batch_size)
-        target = torch.tensor(((tposes[targetindex].astype(np.float32)-mean)/std)).to("cuda").unsqueeze(1)
-        action = np.random.choice(np.arange(8),args.batch_size)
-        actioncond = [1 for i in range(args.batch_size)]
-        cond = {'y': {'tpose': target}}
-        cond['y'].update({'action': torch.tensor(action).unsqueeze(1)})
-        cond['y'].update({'actioncond': torch.tensor(actioncond).to("cuda")})
-        cond['y'].update({'shapecond': torch.ones_like(cond['y']['actioncond'])})
 
-        # original generation process 
-        result = get_result(model, diffusion, (args.batch_size,90,1026,3), model_kwargs=cond)
+    action = np.random.choice(np.arange(1),args.batch_size)
+    actioncond = [1 for i in range(args.batch_size)]
+    cond = {'y': {'tpose': target}}
+    cond['y'].update({'action': torch.tensor(action).unsqueeze(1)})
+    cond['y'].update({'actioncond': torch.tensor(actioncond).to("cuda")})
+    cond['y'].update({'shapecond': torch.ones_like(cond['y']['actioncond'])})
 
-        rot = result[:,:,-2,:]
-        trans = result[:,:,-1,:]
-        res_mesh = result[:,:,:-2,:]
-        rec_verts = np.matmul(evecs.cpu().numpy(), res_mesh*std+mean)
+    # original generation process 
+    result = get_result(model, diffusion, (args.batch_size,90,1026,3), model_kwargs=cond)
 
-        save_path = "render/shaped_"+exp_name
-        os.makedirs(save_path, exist_ok=True)
-        for i in range(args.batch_size):
-            motion = []
-            rot_mat = R.from_rotvec(rot[i]).as_matrix()
-            for f in range(90):
-                motion.append(np.matmul(rot_mat[f], rec_verts[i,f].T).T + trans[i,f])
-        motion = np.stack(motion)
-        np.save("save/generated_result/meshes_"+str(ff)+".npy", motion)
-        np.save("save/generated_result/tpose_"+str(ff)+".npy", targetindex)
-        np.save("save/generated_result/act_"+str(ff)+".npy", action)
+    rot = result[:,:,-2,:]
+    trans = result[:,:,-1,:]
+    res_mesh = result[:,:,:-2,:]
+    rec_verts = np.matmul(evecs.cpu().numpy(), res_mesh*std+mean)
+
+    save_path = "render/shaped_"+exp_name
+    os.makedirs(save_path, exist_ok=True)
+    motion = []
+    for i in range(args.batch_size):
+        rot_mat = R.from_rotvec(rot[i]).as_matrix()
+        for f in range(90):
+            motion.append(np.matmul(rot_mat[f], rec_verts[i,f].T).T + trans[i,f])
+    # motion = np.stack(motion)
+    # np.save("save/generated_result/meshes_"+str(ff)+".npy", motion)
+    # np.save("save/generated_result/tpose_"+str(ff)+".npy", targetindex)
+    # np.save("save/generated_result/act_"+str(ff)+".npy", action)
             # generated_result.append(motion)
-            # for j in range(90):
-            #     _ = trimesh.Trimesh(np.matmul(rot_mat[j], rec_verts[i,j].T).T+trans[i,j], smpl_faces).export(save_path+"/fatmale"+actions[a]+"_"+str(i)+"_"+str(j)+".obj")
+    for k in range(len(motion)):
+        _ = trimesh.Trimesh(motion[k], smpl_faces).export(save_path+"/1_"+str(k)+".obj")
     # generated_result = np.stack(generated_result)
     
     # penetration

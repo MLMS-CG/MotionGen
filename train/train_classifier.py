@@ -1,3 +1,4 @@
+# this file is used for classifier-guidance, deprecated now
 import sys
 sys.path.insert(0, "/home/kxue/Work/MotionGen/MotionGen/")
 
