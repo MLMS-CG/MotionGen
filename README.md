@@ -33,6 +33,8 @@ Using the script 'run.sh'
 Run 'python beta_physique_test.py' for skeleton based generation. The parameters or conditioning signals are hard-coded:
 - Conditioning body shape is 'targetBeta' (beta_physique_test.py) or 'target' (physique_test.py).
 - Conditioning action label is with 'exps'.
+- Conditioning text prompt is in '??'.  <== Kebing will complete it, after modifying the code.
+  
 Run 'python physique_test.py' for mesh based generation
 
 # Test (evaluation)
