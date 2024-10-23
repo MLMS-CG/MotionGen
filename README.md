@@ -27,7 +27,7 @@ It contains:
 Call 'python createDataset.py' to generate dataset for training 
 
 # training
-Using the script 'run.sh'
+Run the script 'run.sh', after checking hyperparameters inside. 
 
 # Test (generation)
 Run 'python beta_physique_test.py' for skeleton based generation. The parameters or conditioning signals are hard-coded:
