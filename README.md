@@ -14,7 +14,7 @@ It contains:
 - **model**: Contains our SMD (baseline.py), shape encoder (encodec.py: computes T-posed mesh from an arbitrarily posed mesh), and the action classifier (classifier.py).
 - **targetMeshes**: contains target meshes we used for the video demo of EG2025 paper.
 - **train**: Contains the training process either for the baseline or the classifier.
-- **utils**: Contains model configurations (parser_util.py).
+- **utils**: Contains model configurations (**parser_util.py**).
 
 # The files
 - **beta_all_\* files** and **beta_\* files**: precomputed distribution (mean and variance) of the training dataset, which are used for the normalization later.
@@ -22,16 +22,20 @@ It contains:
 - **beta_physique_test.py**, and **physique_test.py** contains codes to generate motions with conditions.
 - **shape_consistency.py**, **shapeConsis_colormap.py** contain codes to measure the shape consistency and to visualize the consistency error.
 - **test.py** contains codes to post-process the generated results in a format that is compatible with some evaluation code written by others. The evaluation code can be found in the 'MDM (Motion Diffusion Model) project', under 'eval/eval_humanml.py'.
-- 
+
 # Create dataset
-Run 'python createDataset.py' to generate dataset for training 
+Call 'python createDataset.py' to generate dataset for training 
 
 # training
 Using the script 'run.sh'
 
-# Test
-Run 'python beta_physique_test.py' for skeleton based generation
+# Test (generation)
+Run 'python beta_physique_test.py' for skeleton based generation. The parameters or conditioning signals are hard-coded:
+- Conditioning body shape is 'targetBeta' (beta_physique_test.py) or 'target' (physique_test.py).
+- Conditioning action label is with 'exps'.
 Run 'python physique_test.py' for mesh based generation
+
+# Test (evaluation)
 Using code in [MDM](https://github.com/GuyTevet/motion-diffusion-model) to evaluate 
 
 
