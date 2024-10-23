@@ -23,8 +23,11 @@ It contains:
 - **shape_consistency.py**, **shapeConsis_colormap.py** contain codes to measure the shape consistency and to visualize the consistency error.
 - **test.py** contains codes to post-process the generated results in a format that is compatible with some evaluation code written by others. The evaluation code can be found in the 'MDM (Motion Diffusion Model) project', under 'eval/eval_humanml.py'.
 
-# Create dataset
-Call 'python createDataset.py' to generate dataset for training 
+# Dataset creation
+HumanML3D (text-conditioned generation), babel_V1.0 (label-conditioned generation), both based on AMASS dataset, are the datasets actually used.
+For the HumanML3D, follow its guidance (**Extract and Process Data** section on their project github page) to generate the dataset. 
+For the babel dataset, check the options inside 'default_options_dataset.json' file and run 'createDataset.py'.
+The generated datasets are stored, by default, in the **data/dataset** folder.
 
 # training
 Run the script 'run.sh', after checking hyperparameters inside. 
@@ -35,7 +38,7 @@ Run 'python beta_physique_test.py' for skeleton based generation. The parameters
 - Conditioning action label is with 'exps'.
 - Conditioning text prompt is in '??'.  <== Kebing will complete it, after modifying the code.
   
-Run 'python physique_test.py' for mesh based generation
+Run 'python physique_test.py' for mesh based generation.
 
 # Test (evaluation)
 Using code in [MDM](https://github.com/GuyTevet/motion-diffusion-model) to evaluate 
