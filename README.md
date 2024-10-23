@@ -12,7 +12,8 @@ Run 'python createDataset.py' to generate dataset for training
 Using the script 'run.sh'
 
 # Test
-Run 'python beta_physique_test.py' for generation
+Run 'python beta_physique_test.py' for skeleton based generation
+Run 'python physique_test.py' for mesh based generation
 Using code in [MDM](https://github.com/GuyTevet/motion-diffusion-model) to evaluate 
 
 
