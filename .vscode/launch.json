@@ -13,12 +13,15 @@
             "justMyCode": true,
             "args": [
                 "--save_dir", "save/test",
-                "--data_dir", "data/datasets/dataset_MI_1024_sv_walk_arm/",
+                "--data_dir", "data/datasets/betacrawl/",
                 "--train_platform_type", "NoPlatform",
                 "--lambda_res_trans", "1e4",
                 "--lambda_trans", "50",
                 "--lambda_rot", "10",
-                "--noise_schedule", "cosine"
+                "--noise_schedule", "cosine",
+                "--latent_dim", "128",
+                "--batch_size", "10",
+                "--used_id", "8",
             ]
         }
     ]

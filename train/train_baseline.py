@@ -34,7 +34,7 @@ def main():
     print("creating data loader...")
 
     train_data, means_stds = get_dataset_loader(
-        "train", args.data_dir, args.batch_size, args.nb_freqs, args.offset, args.size_window, return_gender=args.return_gender, rot_aug=args.rot_aug
+        "train", args.data_dir, args.batch_size, args.nb_freqs, args.offset, args.size_window, return_gender=args.return_gender, rot_aug=args.rot_aug, used_id=args.used_id, 
     )
     # val_data, _ = get_dataset_loader(
     #     "val",  args.data_dir, args.batch_size, args.nb_freqs, args.offset, args.size_window, means_stds, return_gender=args.return_gender, rot_aug=args.rot_aug
@@ -45,10 +45,11 @@ def main():
 
     print("creating model and diffusion...")
     model, diffusion = create_unconditioned_model_and_diffusion(args, means_stds)
-    model.tpose_ae.load_state_dict(dist_util.load_state_dict(
-        "save/autoencoder/model0099.pt", map_location=dist_util.dev()
-    ))
-    model.tpose_ae.requires_grad_(False)
+    model.mode('beta')
+    # model.tpose_ae.load_state_dict(dist_util.load_state_dict(
+    #    "save/autoencoder/model0099.pt", map_location=dist_util.dev()
+    #))
+    # model.tpose_ae.requires_grad_(False)
     if args.cuda:
         model.to("cuda")
 

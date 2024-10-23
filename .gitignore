@@ -6,3 +6,6 @@ __pycache__/
 /save
 /demo
 /render*
+*.obj
+/shapeCond
+/tposes

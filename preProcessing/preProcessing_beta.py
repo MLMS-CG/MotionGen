@@ -78,10 +78,10 @@ def selectDataset(babelPath: str, categoryNeeded: Optional[List[int]]) -> Dict[s
             frameFlag = 0 # if the sequence has frame level annotation
             # Build the entry in dict
             path = labelData["feat_p"]
-            if "Faust" in path or "BML" in path:
-                pass
-            else:
-                continue
+            # if "Faust" in path or "BML" in path:
+            #     pass
+            # else:
+            #     continue
             # some may not have frame level annotations
             if labelData["frame_ann"]:
                 labels = labelData["frame_ann"]["labels"]
@@ -107,9 +107,12 @@ def selectDataset(babelPath: str, categoryNeeded: Optional[List[int]]) -> Dict[s
                             if path not in seqInfos.keys():
                                 seqInfos[path] = [] 
                             seqInfos[path].append([act, startTime, endTime])
+                if label["proc_label"]:
+                    if "jack" in label['proc_label']:
+                        if path not in seqInfos.keys():
+                            seqInfos[path] = [] 
+                        seqInfos[path].append(["jack", startTime, endTime])
     return seqInfos
-
-    
 
 
 def fill_dataset(seqInfos):
@@ -204,38 +207,12 @@ def fill_dataset(seqInfos):
                 time_length = len(new_npz_data["trans"])
                 total_nb_frames += time_length
 
-                # if np.any(new_npz_data["betas"][:num_betas]!=betas[10]):
-                #     continue
-
                 # for gpu memory consumption, if the anim is too long
                 max_len = 500
 
                 length = 0
-
-                r1 = R.from_rotvec([0.5*np.pi,0,0]).as_matrix()
                 r1_reverse = R.from_rotvec([-0.5*np.pi,0,0]).as_matrix()
-                body_parms_t = {
-                        # controls the body shape
-                        "betas": torch.Tensor(
-                            np.repeat(
-                                new_npz_data["betas"][:num_betas][
-                                    np.newaxis
-                                ],
-                                repeats=2,
-                                axis=0,
-                            )
-                        ).to(opt["device"]),
-                    }
-
-                body_tpose = current_bm(**body_parms_t)
-                roots_tpose = body_tpose.Jtr[:,0]
-                verts_tpose = np.matmul(
-                        r1,
-                        (body_tpose.v[0]-roots_tpose[0]).cpu().numpy().T
-                    ).T
-
-                coeffs_tpose = np.matmul(evecs.cpu().numpy(), verts_tpose)
-                coeffs_tpose.tofile(tpose_file)
+                new_npz_data["betas"][:num_betas].tofile(tpose_file)
 
                 for i in range(0, len(new_npz_data["trans"][:]), max_len):
                     trans = new_npz_data["trans"][i: i + max_len, :]
@@ -249,9 +226,9 @@ def fill_dataset(seqInfos):
                             new_npz_data["poses"][i: i + max_len, 66:]
                         ).to(opt["device"]),
                         # controls the body dynamics
-                        # "dmpls": torch.Tensor(
-                        #     new_npz_data["dmpls"][i: i + max_len]
-                        # ).to(opt["device"]),
+                        "dmpls": torch.Tensor(
+                            new_npz_data["dmpls"][i: i + max_len]
+                        ).to(opt["device"]),
                         # controls the body shape
                         "betas": torch.Tensor(
                             np.repeat(
@@ -266,23 +243,11 @@ def fill_dataset(seqInfos):
                         ).to(opt["device"]),
                     }
 
-
                     body_pose_beta = current_bm(**body_parms)
                     roots = body_pose_beta.Jtr[:,0]
 
-                    verts = np.stack([
-                        np.matmul(
-                            r1,
-                            (body_pose_beta.v[k]-roots[k]).cpu().numpy().T
-                        ).T
-                        for k in range(len(body_pose_beta.v))
-                    ])
-
-                    coeffs = torch.matmul(evecs, torch.tensor(verts).to("cuda").to(torch.float32))
-
-                    welford.aggregate(coeffs.clone(), flatten=False)
-
-                    coeffs.cpu().numpy().tofile(dataset_file)
+                    posedelta = np.concatenate([new_npz_data["poses"][i: i + max_len, 3:66], new_npz_data["dmpls"][i: i + max_len]],axis=1)
+                    posedelta.astype(np.float32).tofile(dataset_file)
                     (trans+roots.cpu().numpy()).tofile(trans_file)
                     np.stack([
                         R.from_matrix
@@ -294,7 +259,7 @@ def fill_dataset(seqInfos):
                         ).as_rotvec()
                         for mat in new_npz_data["poses"][i: i + max_len, 0:3]
                     ]).tofile(rots_file)
-                    length += coeffs.shape[0]
+                    length += posedelta.shape[0]
 
                 total_nb_samples += 1
 
@@ -302,13 +267,6 @@ def fill_dataset(seqInfos):
                 length.tofile(lengths_file)
                 actions.append(action)
 
-            # uncomment if you want to create few samples for testing
-            '''if total_nb_samples > 100:
-                if train_test == "train":
-                    welford.finalize()
-                    welford.save()
-
-                return'''
     np.save(opt["path_dataset"] + "action.npy", actions)
     welford.finalize()
     welford.save()

@@ -1290,7 +1290,7 @@ class GaussianDiffusion:
         }[self.model_mean_type]
         assert model_output.shape == target.shape == x_start.shape  # [bs, njoints, nfeats, nframes]
 
-        reversed_x_start = x_start[:,:,:-2,:]*self.means_stds[1]+self.means_stds[0]
+        # reversed_x_start = x_start[:,:,:-2,:]*self.means_stds[1]+self.means_stds[0]
         
         predicted_x_start = {
             ModelMeanType.PREVIOUS_X: None,
@@ -1298,12 +1298,12 @@ class GaussianDiffusion:
             ModelMeanType.EPSILON: self._predict_xstart_from_eps(x_t, t, model_output),
         }[self.model_mean_type]
 
-        reversed_model_output = predicted_x_start[:,:,:-2,:]*self.means_stds[1]+self.means_stds[0]
+        # reversed_model_output = predicted_x_start[:,:,:-2,:]*self.means_stds[1]+self.means_stds[0]
         # Use to calculate loss based on mesh
-        mesh_output = torch.matmul(evecs, reversed_model_output)
-        mesh_start = torch.matmul(evecs, reversed_x_start)
+        # mesh_output = torch.matmul(evecs, reversed_model_output)
+        # mesh_start = torch.matmul(evecs, reversed_x_start)
         
-        terms["mse"] = (self.l2_loss(target[:,:,:-2,:], model_output[:,:,:-2,:])*self.means_stds[1]).sum((2,3)).mean(1) # mean_flat(rot_mse)
+        """terms["mse"] = (self.l2_loss(target[:,:,:-2,:], model_output[:,:,:-2,:])*self.means_stds[1]).sum((2,3)).mean(1) # mean_flat(rot_mse)
         terms["mesh_mse"] = self.l2_loss(mesh_output, mesh_start).sum((2,3)).mean(1)
 
         terms["rot_mse"] = self.lambda_rot * (self.l2_loss(target[:,:,-2,:], model_output[:,:,-2,:])).sum(2).mean(1)
@@ -1313,7 +1313,14 @@ class GaussianDiffusion:
                 target[:,1:,-1,:2]-target[:,:-1,-1,:2], 
                 model_output[:,1:,-1,:2]- model_output[:,:-1,-1,:2]
             )
-        ).sum(2).mean(1)
+        ).sum(2).mean(1)"""
+
+        terms["beta"] = 10*(self.l2_loss(target[:,:,:63], model_output[:,:,:63])).mean((1,2)) 
+        terms["rot"] = self.lambda_rot * (self.l2_loss(target[:,:,71:74], model_output[:,:,71:74])).mean((1,2))
+        terms["trans"] = self.lambda_trans * (self.l2_loss(target[:,:,74:77], model_output[:,:,74:77])).mean((1,2))
+        terms["dmpl"] = self.l2_loss(target[:,:,63:71], model_output[:,:,63:71]).mean((1,2))
+
+
         # mesh_velo = torch.abs(mesh_start[:,1:,:,:]-mesh_start[:,:-1,:,:])
 
         # terms["mesh_velo"] = self.l2_loss(
@@ -1321,7 +1328,7 @@ class GaussianDiffusion:
         #     (mesh_output[:,1:,:,:]-mesh_output[:,:-1,:,:])
         # ).sum((2,3)).mean(1)
           
-        terms["mesh_mse"] = self.lambda_mm * terms["mesh_mse"]
+        '''terms["mesh_mse"] = self.lambda_mm * terms["mesh_mse"]
         lbd = _extract_into_tensor(self.alphas_cumprod, t, terms["mesh_mse"].shape)
         terms["mesh_mse"] = lbd * terms["mesh_mse"]
 
@@ -1330,13 +1337,12 @@ class GaussianDiffusion:
                + terms["mesh_mse"]\
                + terms["rot_mse"]\
                + terms["trans_mse"]\
-               + terms["res_trans"])
+               + terms["res_trans"])'''
             #    + lambda_mesh * self.lambda_mv*terms["mesh_velo"]\
 
+        terms['loss'] = terms['beta']+10*terms['rot']+10*terms['trans']+terms['dmpl']
 
         return terms
-
-
 
     def _prior_bpd(self, x_start):
         """
