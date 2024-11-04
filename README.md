@@ -36,9 +36,11 @@ Run the script 'run.sh', after checking hyperparameters inside.
 Run 'python beta_physique_test.py' for skeleton based generation. The parameters or conditioning signals are hard-coded:
 - Conditioning body shape is 'targetBeta' (beta_physique_test.py) or 'target' (physique_test.py).
 - Conditioning action label is with 'exps'.
-- Conditioning text prompt is in '??'.  <== Kebing will complete it, after modifying the code.
-  
 Run 'python physique_test.py' for mesh based generation.
+
+Run 'generation_test.py' for text conditioned and mesh based generation
+- Conditioning text prompt is defined by the parameter 'text' in 'generation_test.py'.  
+  
 
 # Test (evaluation)
 Using code in [MDM](https://github.com/GuyTevet/motion-diffusion-model) to evaluate 
